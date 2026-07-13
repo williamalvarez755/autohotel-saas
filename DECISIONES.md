@@ -1,0 +1,48 @@
+# Decisiones de desarrollo · AutoHotel SaaS
+
+Registro de las decisiones tomadas donde la especificación dejaba alternativas, con su motivo. (Copia sincronizada en `docs/06_decisiones.md`.)
+
+## Modelo de datos
+
+1. **Tabla `cobros` (libro de ingresos)** — La especificación pide que dashboard y reportes "cuadren". Con solo `estancias` no se puede saber *cuándo* entró el dinero (el cobro base entra al inicio y la liquidación al final, a veces en días distintos). Cada cobro guarda `tipo` (base/salida), desglose `monto_habitacion` / `monto_pedidos`, método, fecha y usuario. Ingresos del día y reportes salen de aquí.
+2. **`suscripciones` separada de `usuarios`** — el estado comercial (vencimiento, suspensión) es independiente de la identidad; `estado` solo guarda la suspensión manual y "vencida"/"por vencer" se **calculan** con la fecha, evitando cron jobs para marcar vencidos: el bloqueo es automático al comparar fechas en el login/middleware.
+3. **`movimientos_inventario` con tipos `entrada|salida|ajuste_positivo|ajuste_negativo`** y cantidad siempre positiva: auditoría legible (quién, cuánto, por qué, cuándo) sin aritmética ambigua.
+4. **`usuarios.dueno_id` en trabajadores** además de `hotel_id`: permite verificar la suscripción del dueño con un solo JOIN en cada petición.
+5. **FKs circulares usuarios⇄hoteles**: se resuelven creando `usuarios` primero y agregando la FK de `hotel_id` después; el schema desactiva `FOREIGN_KEY_CHECKS` solo durante los DROP.
+
+## Reglas de negocio
+
+6. **Noche completa = entrada + `horas_noche` del hotel** (12 por defecto, configurable por hotel desde el superadmin), en lugar de una hora fija de checkout: los autohoteles venden "la noche" como bloque de horas.
+7. **Horas extra al `precio_hora_extra` fotografiado en la estancia, redondeadas hacia arriba**, también para estancias de noche: es la práctica común y lo que pide la spec ("se redondean hacia arriba y se cobran en la salida"). Ver decisión 26.
+8. **El cobro base puede posponerse**: el flujo normal es cobrar por adelantado (la pantalla de cobro aparece automáticamente tras la entrada), pero el botón "Cobrar en la salida" deja el base pendiente y la salida lo liquida todo junto. Evita bloquear la operación si el cliente pide pagar al final.
+9. **Reserva = habitación RESERVADA de inmediato** (como pide la spec) y **máximo una reserva pendiente por habitación** (crear una reserva exige habitación disponible). Un walk-in que quiere esa habitación obliga a cancelar la reserva primero — decisión consciente para evitar dobles asignaciones.
+10. **Cambio manual de estado limitado**: solo `disponible ⇄ limpieza`, y salir de `reservada` cancela la reserva. Nunca se pasa a `ocupada` a mano (solo la entrada) ni se saca de `ocupada` (solo la salida): protege la integridad dinero-estancia.
+11. **Reactivar manual ≠ pago**: reactivar solo quita la suspensión manual; si la fecha venció, sigue bloqueado hasta registrar el pago. El pago extiende `max(hoy, vencimiento) + 1 mes` (con ajuste de fin de mes) y reactiva.
+12. **Trabajador puede indicar el precio al crear un producto** (la mercadería suele llegar con precio conocido) pero no puede editarlo después; si no lo sabe, queda en Q0 con etiqueta "Sin precio" visible para que el dueño lo confirme. Editar precios, ajustar en negativo y desactivar son solo del dueño.
+13. **El dueño también opera**: todas las rutas de operación aceptan `dueno` y `trabajador`, porque en autohoteles pequeños el dueño cubre turnos.
+14. **El superadmin no opera hoteles**: sus rutas son solo de administración comercial; el middleware de tenant lo rechaza explícitamente.
+
+## Técnica
+
+15. **Fechas en hora de Guatemala (GMT-6) como `DATETIME`** y "ahora" calculado en Node y pasado como parámetro SQL: GT no tiene horario de verano, así el sistema no depende de la zona horaria del servidor MySQL ni del sistema operativo. El backend además envía épocas (ms) para los contadores en vivo del frontend (`dateStrings: true` en mysql2 evita conversiones implícitas).
+16. **Sesiones en MySQL (`express-mysql-session`)** en lugar de MemoryStore: sobrevive reinicios y es apto para producción sin agregar Redis.
+17. **Rate limit de login en memoria** (10 intentos / 5 min por IP+usuario): suficiente para una instancia; con varios nodos se movería a la BD o Redis (documentado en despliegue).
+18. **CSRF**: mitigado con `SameSite=Lax` + API exclusivamente JSON (sin formularios cross-site posibles) y sin CORS habilitado. No se agregó token CSRF para no complicar el frontend vanilla; con `SameSite=Lax` los POST cross-site no llevan la cookie.
+19. **CSP** permite scripts solo de `self` y `cdn.jsdelivr.net` (Chart.js). Si el servidor no tiene internet, los reportes muestran las tablas sin gráficas (el código verifica `typeof Chart`).
+20. **Anti-enumeración de usuarios**: el login compara contra un hash de relleno cuando el usuario no existe (tiempo de respuesta uniforme) y siempre responde "Usuario o contraseña incorrectos".
+21. **`SET NAMES utf8mb4` dentro de schema/seed**: el cliente `mysql` de Windows usa por defecto charset de consola (cp850) y corrompía los acentos al importar; fijarlo dentro del archivo hace la importación segura en cualquier sistema.
+22. **Polling (25 s) + tick local (1 s)** en lugar de WebSockets: cumple el requisito, cero dependencias extra y escala sin estado en el servidor; el diseño deja el refresco centralizado (`cicloPolling`) por si se quisiera migrar a SSE/WS.
+23. **Frontend en 5 archivos JS por responsabilidad** (api, común, núcleo, operaciones, administración) sin framework: mantenible y dentro de la restricción "vanilla".
+24. **`estado_calculado` de suscripciones se computa en el backend** (`por_vencer` = faltan ≤ `DIAS_POR_VENCER` días, configurable en `.env`): un solo lugar con la regla, el frontend solo pinta.
+
+## Motor de tarifas y endurecimiento (2026-07-13)
+
+25. **Tarifas por habitación (tabla `tarifas`)** en lugar de un precio por hora libre: los autohoteles venden *paquetes* precio/tiempo (Q100/3h, Q160/6h) y el dueño debe controlar la oferta — el trabajador solo elige del menú, no puede inventar precios ni duraciones. Se descartó "tarifas por hotel" (habitaciones distintas cobran distinto) y "categorías de habitación" (una tabla más sin necesidad real a esta escala).
+26. **Foto de condiciones en la estancia** (`tarifa_nombre`, `horas_contratadas`, `precio_hora_extra`): corrige una falla real del modelo anterior — las horas extra se calculaban con el precio *actual* de la habitación, por lo que editar precios cambiaba retroactivamente cobros en curso y reportes históricos. Con la foto, lo pactado al entrar es inmutable; por eso también `estancias.tarifa_id` es `ON DELETE SET NULL` y editar tarifas es un reemplazo total sin riesgo.
+27. **`precio_hora_extra` explícito por habitación** en lugar de derivarlo de una tarifa (precio/horas): la hora excedida en un autohotel se castiga con un precio propio, normalmente mayor al prorrateo; derivarlo sería ambiguo con varios paquetes.
+28. **Edición de tarifas = reemplazo total en transacción** (DELETE + INSERT) en lugar de un CRUD por tarifa: menos endpoints y estados intermedios, imposible dejar menús a medias, y la historia no se rompe gracias a la foto (decisión 26).
+29. **CSP `script-src 'self'` con Chart.js vendorizado** (`public/js/vendor/`): elimina el CDN como superficie de ataque (compromiso de jsdelivr = JS ejecutando en el panel) y hace que las gráficas funcionen sin internet — relevante para autohoteles con conectividad pobre.
+30. **Verificación de `Origin`/`Sec-Fetch-Site` en peticiones mutantes** (`middleware/seguridad.js`): defensa en profundidad anti-CSRF sobre `SameSite=Lax`. Los clientes sin navegador (curl, pruebas) no envían estas cabeceras y pasan; un navegador moderno siempre las envía en peticiones cross-site, que es el vector a cortar. Se prefirió a un token CSRF para no complicar el frontend vanilla.
+31. **Proceso que no se cae por errores asíncronos**: `unhandledRejection`/`uncaughtException` se registran sin `process.exit` — el limpiador interno de `express-mysql-session` tumbó el servidor real con un `ECONNRESET` durante las pruebas. Trade-off consciente (la recepción del hotel a las 2 a. m. no puede quedarse sin sistema); el almacén de sesiones ahora comparte el pool de la app (se recupera solo) y producción exige supervisor con reinicio.
+32. **Guard al desactivar hoteles**: un hotel con estancias activas no puede desactivarse (el superadmin dejaría dinero sin liquidar y trabajadores sin acceso para dar salidas). Mismo espíritu que el guard existente de habitaciones ocupadas.
+33. **Buscador POS 100 % en cliente** (filtrado instantáneo con normalización de acentos): un autohotel maneja decenas de productos, no miles — buscar en servidor agregaría latencia y complejidad sin beneficio. La lista ya viaja completa al abrir el modal.

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoHotel · Panel</title>
+  <script src="/js/iconos.js"></script>
+  <script src="/js/tema.js"></script>
+  <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+  <header class="barra-superior">
+    <div class="marca">
+      <span class="marca-logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M2 22h20"/><path d="M10 6h1"/><path d="M13 6h1"/><path d="M10 10h1"/><path d="M13 10h1"/><path d="M10 14h1"/><path d="M13 14h1"/><path d="M10 18h4"/></svg></span>
+      <span class="texto-marca">Auto<span>Hotel</span></span>
+    </div>
+    <select class="selector-hotel" id="selector-hotel" title="Hotel activo"></select>
+    <div class="zona-derecha">
+      <button class="boton-campana" id="boton-tema" title="Cambiar tema"></button>
+      <button class="boton-campana" id="boton-alertas" title="Alertas">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+        <span class="globo oculto" id="globo-alertas">0</span>
+      </button>
+      <div class="avatar" id="avatar-usuario"></div>
+      <div class="usuario-mini">
+        <div class="nombre" id="nombre-usuario">—</div>
+        <div class="rol" id="rol-usuario">—</div>
+      </div>
+      <button class="boton secundario chico" id="boton-salir">Salir</button>
+    </div>
+  </header>
+
+  <div class="distribucion">
+    <nav class="navegacion" id="navegacion"></nav>
+
+    <main class="contenido">
+      <section id="seccion-dashboard" class="oculto"></section>
+      <section id="seccion-tablero" class="oculto"></section>
+      <section id="seccion-estancias" class="oculto"></section>
+      <section id="seccion-limpieza" class="oculto"></section>
+      <section id="seccion-reservas" class="oculto"></section>
+      <section id="seccion-inventario" class="oculto"></section>
+      <section id="seccion-reportes" class="oculto"></section>
+      <section id="seccion-usuarios" class="oculto"></section>
+      <section id="seccion-habitaciones" class="oculto"></section>
+    </main>
+  </div>
+
+  <script src="/js/vendor/chart.umd.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/comun.js"></script>
+  <script src="/js/operaciones.js"></script>
+  <script src="/js/administracion.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

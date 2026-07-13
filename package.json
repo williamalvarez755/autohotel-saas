@@ -1,0 +1,25 @@
+{
+  "name": "autohotel-saas",
+  "version": "1.0.0",
+  "description": "Sistema SaaS multi-tenant de gestión de autohoteles (Guatemala)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test/e2e.js",
+    "db:importar": "node db/importar.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-mysql-session": "^3.0.3",
+    "express-session": "^1.18.1",
+    "mysql2": "^3.11.5"
+  }
+}

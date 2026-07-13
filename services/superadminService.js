@@ -1,0 +1,234 @@
+// ============================================================
+// Servicio del superadmin (proveedor del software): gestión de
+// dueños, hoteles, suscripciones y pagos de mensualidad.
+// El estado mostrado de cada suscripción se calcula así:
+//   suspendida -> suspensión manual
+//   vencida    -> fecha_vencimiento < hoy
+//   por_vencer -> vence en <= N días (config DIAS_POR_VENCER)
+//   activa     -> el resto
+// ============================================================
+
+const bcrypt = require('bcrypt');
+const { pool, conTransaccion } = require('../db/pool');
+const config = require('../config/config');
+const { LIMITES } = require('../config/constantes');
+const { ErrorNegocio } = require('../middleware/errores');
+const { ahoraGT, hoyGT } = require('../utils/fechas');
+
+const RONDAS_BCRYPT = LIMITES.RONDAS_BCRYPT;
+
+/** Estado calculado de una suscripción. */
+function estadoCalculado(estado, fechaVencimiento) {
+  const hoy = hoyGT();
+  const venc = String(fechaVencimiento).slice(0, 10);
+  if (estado === 'suspendida') return 'suspendida';
+  if (venc < hoy) return 'vencida';
+  const dias = Math.round((Date.parse(venc) - Date.parse(hoy)) / 86400000);
+  if (dias <= config.negocio.diasPorVencer) return 'por_vencer';
+  return 'activa';
+}
+
+/** Suma un mes calendario a una fecha 'YYYY-MM-DD' (ajusta fin de mes). */
+function sumarUnMes(fecha) {
+  const [a, m, d] = fecha.split('-').map(Number);
+  const base = new Date(Date.UTC(a, m - 1 + 1, 1));
+  const ultimoDia = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
+  const dia = Math.min(d, ultimoDia);
+  const mes = String(base.getUTCMonth() + 1).padStart(2, '0');
+  return `${base.getUTCFullYear()}-${mes}-${String(dia).padStart(2, '0')}`;
+}
+
+/** Lista de dueños con hoteles, suscripción y estado calculado. */
+async function listarDuenos() {
+  const [filas] = await pool.query(
+    `SELECT u.id, u.nombre, u.usuario, u.activo,
+            s.estado AS suscripcion_estado, s.fecha_vencimiento,
+            (SELECT COUNT(*) FROM hoteles h WHERE h.dueno_id = u.id AND h.activo = 1) AS hoteles_activos,
+            (SELECT COUNT(*) FROM usuarios t WHERE t.dueno_id = u.id AND t.rol = 'trabajador' AND t.activo = 1) AS trabajadores_activos
+       FROM usuarios u
+       JOIN suscripciones s ON s.dueno_id = u.id
+      WHERE u.rol = 'dueno'
+      ORDER BY u.nombre`,
+    []
+  );
+  const [hoteles] = await pool.query(
+    `SELECT id, dueno_id, nombre, direccion, activo,
+            minutos_alerta_limpieza, horas_noche
+       FROM hoteles
+      ORDER BY nombre`,
+    []
+  );
+  return filas.map((d) => ({
+    ...d,
+    estado_calculado: estadoCalculado(d.suscripcion_estado, d.fecha_vencimiento),
+    hoteles: hoteles.filter((h) => h.dueno_id === d.id)
+  }));
+}
+
+/** Crea un dueño con su suscripción inicial. */
+async function crearDueno(datos) {
+  return conTransaccion(async (cx) => {
+    const [existe] = await cx.query('SELECT id FROM usuarios WHERE usuario = ? LIMIT 1', [datos.usuario]);
+    if (existe.length) throw new ErrorNegocio('El nombre de usuario ya está en uso');
+
+    const hash = await bcrypt.hash(datos.password, RONDAS_BCRYPT);
+    const ahora = ahoraGT();
+    const [resultado] = await cx.query(
+      `INSERT INTO usuarios (rol, nombre, usuario, password_hash, dueno_id, hotel_id, activo, creado_en)
+       VALUES ('dueno', ?, ?, ?, NULL, NULL, 1, ?)`,
+      [datos.nombre, datos.usuario, hash, ahora]
+    );
+    await cx.query(
+      `INSERT INTO suscripciones (dueno_id, estado, fecha_vencimiento, actualizado_en)
+       VALUES (?, 'activa', ?, ?)`,
+      [resultado.insertId, datos.fecha_vencimiento, ahora]
+    );
+    return { id: resultado.insertId };
+  });
+}
+
+/** Edita nombre y, opcionalmente, la contraseña de un dueño. */
+async function editarDueno(duenoId, datos) {
+  return conTransaccion(async (cx) => {
+    const [filas] = await cx.query(
+      `SELECT id FROM usuarios WHERE id = ? AND rol = 'dueno' LIMIT 1 FOR UPDATE`,
+      [duenoId]
+    );
+    if (!filas.length) throw new ErrorNegocio('Dueño no encontrado', 404);
+
+    if (datos.password) {
+      const hash = await bcrypt.hash(datos.password, RONDAS_BCRYPT);
+      await cx.query('UPDATE usuarios SET nombre = ?, password_hash = ? WHERE id = ?', [datos.nombre, hash, duenoId]);
+    } else {
+      await cx.query('UPDATE usuarios SET nombre = ? WHERE id = ?', [datos.nombre, duenoId]);
+    }
+    return { id: duenoId };
+  });
+}
+
+/** Suspensión / reactivación manual de la cuenta de un dueño. */
+async function cambiarSuspension(duenoId, suspender) {
+  const [resultado] = await pool.query(
+    `UPDATE suscripciones SET estado = ?, actualizado_en = ? WHERE dueno_id = ?`,
+    [suspender ? 'suspendida' : 'activa', ahoraGT(), duenoId]
+  );
+  if (!resultado.affectedRows) throw new ErrorNegocio('Dueño no encontrado', 404);
+  return { dueno_id: duenoId, estado: suspender ? 'suspendida' : 'activa' };
+}
+
+/**
+ * Registra un pago de mensualidad:
+ * - Guarda el pago (monto, mes correspondiente, nota).
+ * - Extiende la fecha de vencimiento un mes calendario a partir
+ *   de la fecha mayor entre hoy y el vencimiento actual.
+ * - Reactiva la cuenta si estaba suspendida.
+ */
+async function registrarPago(adminId, duenoId, datos) {
+  return conTransaccion(async (cx) => {
+    const [suscripciones] = await cx.query(
+      'SELECT id, fecha_vencimiento FROM suscripciones WHERE dueno_id = ? LIMIT 1 FOR UPDATE',
+      [duenoId]
+    );
+    if (!suscripciones.length) throw new ErrorNegocio('Dueño no encontrado', 404);
+
+    const hoy = hoyGT();
+    const vencimientoActual = String(suscripciones[0].fecha_vencimiento).slice(0, 10);
+    const base = vencimientoActual > hoy ? vencimientoActual : hoy;
+    const nuevoVencimiento = sumarUnMes(base);
+    const ahora = ahoraGT();
+
+    await cx.query(
+      `UPDATE suscripciones SET estado = 'activa', fecha_vencimiento = ?, actualizado_en = ? WHERE dueno_id = ?`,
+      [nuevoVencimiento, ahora, duenoId]
+    );
+    const [resultado] = await cx.query(
+      `INSERT INTO pagos_servicio (dueno_id, monto, fecha_pago, mes_correspondiente, nota, registrado_por)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [duenoId, datos.monto, ahora, datos.mes_correspondiente, datos.nota, adminId]
+    );
+    return { pago_id: resultado.insertId, nueva_fecha_vencimiento: nuevoVencimiento };
+  });
+}
+
+/** Historial de pagos de un dueño. */
+async function pagosDeDueno(duenoId) {
+  const [duenos] = await pool.query(
+    `SELECT id, nombre FROM usuarios WHERE id = ? AND rol = 'dueno' LIMIT 1`,
+    [duenoId]
+  );
+  if (!duenos.length) throw new ErrorNegocio('Dueño no encontrado', 404);
+  const [pagos] = await pool.query(
+    `SELECT p.id, p.monto, p.fecha_pago, p.mes_correspondiente, p.nota,
+            a.nombre AS registrado_por_nombre
+       FROM pagos_servicio p
+       JOIN usuarios a ON a.id = p.registrado_por
+      WHERE p.dueno_id = ?
+      ORDER BY p.fecha_pago DESC, p.id DESC`,
+    [duenoId]
+  );
+  return { dueno: duenos[0], pagos };
+}
+
+/** Crea un hotel y lo asigna a un dueño. */
+async function crearHotel(datos) {
+  const [duenos] = await pool.query(
+    `SELECT id FROM usuarios WHERE id = ? AND rol = 'dueno' LIMIT 1`,
+    [datos.dueno_id]
+  );
+  if (!duenos.length) throw new ErrorNegocio('El dueño indicado no existe', 404);
+
+  const [resultado] = await pool.query(
+    `INSERT INTO hoteles (dueno_id, nombre, direccion, minutos_alerta_limpieza, horas_noche, activo, creado_en)
+     VALUES (?, ?, ?, ?, ?, 1, ?)`,
+    [datos.dueno_id, datos.nombre, datos.direccion, datos.minutos_alerta_limpieza, datos.horas_noche, ahoraGT()]
+  );
+  return { id: resultado.insertId };
+}
+
+/**
+ * Edita un hotel (datos y configuración de reglas).
+ * No se puede desactivar un hotel con estancias activas: quedaría
+ * dinero sin liquidar y clientes "atrapados" sin poder darles salida.
+ */
+async function editarHotel(hotelId, datos) {
+  return conTransaccion(async (cx) => {
+    const [hoteles] = await cx.query(
+      'SELECT id FROM hoteles WHERE id = ? LIMIT 1 FOR UPDATE',
+      [hotelId]
+    );
+    if (!hoteles.length) throw new ErrorNegocio('Hotel no encontrado', 404);
+
+    if (datos.activo === 0) {
+      const [activas] = await cx.query(
+        `SELECT COUNT(*) AS total FROM estancias WHERE hotel_id = ? AND estado = 'activa'`,
+        [hotelId]
+      );
+      if (activas[0].total > 0) {
+        throw new ErrorNegocio(
+          `No se puede desactivar: el hotel tiene ${activas[0].total} estancia(s) activa(s) sin liquidar`
+        );
+      }
+    }
+
+    await cx.query(
+      `UPDATE hoteles
+          SET nombre = ?, direccion = ?, minutos_alerta_limpieza = ?, horas_noche = ?, activo = ?
+        WHERE id = ?`,
+      [datos.nombre, datos.direccion, datos.minutos_alerta_limpieza, datos.horas_noche, datos.activo, hotelId]
+    );
+    return { id: hotelId };
+  });
+}
+
+module.exports = {
+  listarDuenos,
+  crearDueno,
+  editarDueno,
+  cambiarSuspension,
+  registrarPago,
+  pagosDeDueno,
+  crearHotel,
+  editarHotel,
+  estadoCalculado,
+  sumarUnMes
+};

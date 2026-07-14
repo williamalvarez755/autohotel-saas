@@ -61,8 +61,10 @@ npm run db:importar -- --confirmar
 
 - **Base de datos**: cuenta en [aiven.io](https://aiven.io) → servicio **MySQL** plan *Free*. Copie host, puerto, usuario, contraseña y base (`defaultdb`), y descargue el certificado **CA** (`ca.pem`).
 - **App**: cuenta en [render.com](https://render.com) → **New → Web Service** → conecte el repo. Runtime Node, build `npm install`, start `npm start`, plan **Free**.
-- **Variables en Render**: las mismas de la tabla de arriba pero con los datos de Aiven, además `DB_SSL=1` y `DB_SSL_CA` = el contenido completo del `ca.pem` (péguelo tal cual; la app acepta saltos de línea reales o escritos como `\n`).
-- **Importar la base**: igual que en Railway — `.env` temporal en su PC con los datos de Aiven **más `DB_SSL=1` y `DB_SSL_CA`**, y `npm run db:importar -- --confirmar`.
+- **Variables en Render**: las mismas de la tabla de arriba pero con los datos de Aiven, además `DB_SSL=1` y el CA de Aiven. Para el CA hay dos formas (cualquiera funciona):
+  - *Recomendada*: en Render, sección **Secret Files** → cree el archivo `ca.pem` pegando el contenido del certificado → y ponga la variable `DB_SSL_CA=/etc/secrets/ca.pem`.
+  - Alternativa: pegue el contenido completo del `ca.pem` directamente como valor de `DB_SSL_CA` (la app acepta saltos de línea reales o escritos como `\n`).
+- **Importar la base**: igual que en Railway — `.env` temporal en su PC con los datos de Aiven más `DB_SSL=1` y `DB_SSL_CA=db/ca.pem` (guarde ahí el archivo descargado; el `.gitignore` ya excluye `*.pem`), y `npm run db:importar -- --confirmar`.
 - Limitación del plan gratuito de Render: la app **se duerme** tras ~15 min sin visitas y el primer acceso tarda ~1 minuto en despertar. Para demos está bien; para operación real, no.
 
 ---

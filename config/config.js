@@ -10,6 +10,21 @@ function entero(valor, porDefecto) {
   return Number.isInteger(n) && n > 0 ? n : porDefecto;
 }
 
+/**
+ * DB_SSL_CA acepta dos formatos:
+ * - El contenido PEM directo (con saltos reales o escritos como \n).
+ * - Una ruta a un archivo .pem (ej. db/ca.pem o /etc/secrets/ca.pem).
+ */
+function leerCertificadoCa(valor) {
+  if (!valor) return '';
+  if (valor.includes('-----BEGIN')) return valor.replace(/\\n/g, '\n');
+  try {
+    return require('fs').readFileSync(valor, 'utf8');
+  } catch (e) {
+    throw new Error(`DB_SSL_CA: no se pudo leer el archivo "${valor}" (${e.message})`);
+  }
+}
+
 const config = {
   puerto: entero(process.env.PORT, 3000),
   esProduccion: process.env.NODE_ENV === 'production',
@@ -22,10 +37,9 @@ const config = {
     nombre: process.env.DB_NAME || 'autohotel_saas',
     // TLS para MySQL administrado en la nube (Railway/Aiven/TiDB…):
     // DB_SSL=1 activa la conexión cifrada con verificación de certificado.
-    // DB_SSL_CA (opcional): contenido PEM del CA del proveedor, con los
-    // saltos de línea escritos como \n (formato habitual en paneles de env).
+    // DB_SSL_CA (opcional): CA del proveedor — contenido PEM o ruta a un .pem.
     ssl: process.env.DB_SSL === '1',
-    sslCa: process.env.DB_SSL_CA ? process.env.DB_SSL_CA.replace(/\\n/g, '\n') : ''
+    sslCa: leerCertificadoCa(process.env.DB_SSL_CA)
   },
 
   sesion: {

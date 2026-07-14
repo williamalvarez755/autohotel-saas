@@ -169,6 +169,69 @@ async function pagosDeDueno(duenoId) {
   return { dueno: duenos[0], pagos };
 }
 
+/**
+ * Elimina DEFINITIVAMENTE a un dueño y toda su jerarquía (hoteles,
+ * trabajadores, habitaciones, tarifas, estancias, pedidos, cobros,
+ * reservas, inventario, pagos y suscripción). Pensado para cuentas
+ * que dejaron de pagar y quedaron como datos muertos.
+ *
+ * Salvaguardas:
+ * - Exige la confirmación con el usuario EXACTO del dueño.
+ * - Se niega si hay estancias activas (dinero sin liquidar).
+ * - Todo ocurre en una transacción: o se borra todo o nada.
+ */
+async function eliminarDueno(duenoId, confirmarUsuario) {
+  return conTransaccion(async (cx) => {
+    const [duenos] = await cx.query(
+      `SELECT id, nombre, usuario FROM usuarios WHERE id = ? AND rol = 'dueno' LIMIT 1 FOR UPDATE`,
+      [duenoId]
+    );
+    if (!duenos.length) throw new ErrorNegocio('Dueño no encontrado', 404);
+    const dueno = duenos[0];
+
+    if (confirmarUsuario !== dueno.usuario) {
+      throw new ErrorNegocio(
+        `Confirmación incorrecta: escriba el usuario exacto del dueño ("${dueno.usuario}") para eliminarlo`
+      );
+    }
+
+    const [hoteles] = await cx.query('SELECT id FROM hoteles WHERE dueno_id = ?', [duenoId]);
+    const hotelIds = hoteles.map((h) => h.id);
+
+    if (hotelIds.length) {
+      const [activas] = await cx.query(
+        `SELECT COUNT(*) AS total FROM estancias WHERE hotel_id IN (?) AND estado = 'activa'`,
+        [hotelIds]
+      );
+      if (activas[0].total > 0) {
+        throw new ErrorNegocio(
+          `No se puede eliminar: tiene ${activas[0].total} estancia(s) activa(s) sin liquidar. Finalícelas primero.`
+        );
+      }
+
+      // Purga en orden de dependencias (las llaves foráneas son RESTRICT)
+      await cx.query('DELETE FROM cobros WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM pedidos WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM movimientos_inventario WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM reservas WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM estancias WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM tarifas WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM productos WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM habitaciones WHERE hotel_id IN (?)', [hotelIds]);
+    }
+
+    await cx.query(`DELETE FROM usuarios WHERE dueno_id = ? AND rol = 'trabajador'`, [duenoId]);
+    await cx.query('DELETE FROM pagos_servicio WHERE dueno_id = ?', [duenoId]);
+    await cx.query('DELETE FROM suscripciones WHERE dueno_id = ?', [duenoId]);
+    if (hotelIds.length) {
+      await cx.query('DELETE FROM hoteles WHERE id IN (?)', [hotelIds]);
+    }
+    await cx.query('DELETE FROM usuarios WHERE id = ?', [duenoId]);
+
+    return { id: duenoId, nombre: dueno.nombre, hoteles_eliminados: hotelIds.length };
+  });
+}
+
 /** Crea un hotel y lo asigna a un dueño. */
 async function crearHotel(datos) {
   const [duenos] = await pool.query(
@@ -224,6 +287,7 @@ module.exports = {
   listarDuenos,
   crearDueno,
   editarDueno,
+  eliminarDueno,
   cambiarSuspension,
   registrarPago,
   pagosDeDueno,

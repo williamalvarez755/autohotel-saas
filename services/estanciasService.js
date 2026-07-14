@@ -94,16 +94,24 @@ async function registrarEntrada(hotel, usuarioId, datos) {
     const horaSalidaPrevista = sumarHoras(horaEntrada, horasContratadas);
     const precioHoraExtra = redondear(habitacion.precio_hora_extra);
 
+    // Foto del recargo de la reserva (recargo por reservar + extras como
+    // decoración): queda pactado en la estancia y se cobra con el base.
+    const cargoExtra = reserva ? redondear(reserva.cargo_extra) : 0;
+    const cargoDescripcion = reserva ? reserva.cargo_descripcion : '';
+    const totalFinalInicial = sumar(totalBase, cargoExtra);
+
     const [resultado] = await cx.query(
       `INSERT INTO estancias
          (hotel_id, habitacion_id, placa, tipo, tarifa_id, tarifa_nombre,
           horas_contratadas, precio_hora_extra, hora_entrada, hora_salida_prevista,
+          cargo_extra, cargo_descripcion,
           total_base, total_habitacion, total_final, estado, creado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activa', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'activa', ?)`,
       [
         hotel.id, habitacion.id, datos.placa, datos.tipo, tarifaId, tarifaNombre,
         horasContratadas, precioHoraExtra, horaEntrada, horaSalidaPrevista,
-        totalBase, totalBase, totalBase, usuarioId
+        cargoExtra, cargoDescripcion,
+        totalBase, totalBase, totalFinalInicial, usuarioId
       ]
     );
 
@@ -128,6 +136,9 @@ async function registrarEntrada(hotel, usuarioId, datos) {
       hora_entrada: horaEntrada,
       hora_salida_prevista: horaSalidaPrevista,
       total_base: totalBase,
+      cargo_extra: cargoExtra,
+      cargo_descripcion: cargoDescripcion,
+      total_cobro_base: sumar(totalBase, cargoExtra),
       pagado_base: 0
     };
   });
@@ -148,7 +159,8 @@ async function pagarBase(hotelId, usuarioId, estanciaId, metodo, efectivoRecibid
     const estancia = estancias[0];
     if (estancia.pagado_base) throw new ErrorNegocio('El cobro base de esta estancia ya fue pagado');
 
-    const total = redondear(estancia.total_base);
+    // El cobro base incluye el recargo de la reserva fotografiado
+    const total = sumar(estancia.total_base, estancia.cargo_extra);
     let cambio = null;
     if (metodo === 'efectivo') {
       if (efectivoRecibido < total) {
@@ -220,14 +232,18 @@ function calcularDesglose(estancia, epochAhora) {
   const extras = horasExtra(estancia.hora_salida_prevista, epochAhora);
   const totalExtra = multiplicar(estancia.precio_hora_extra, extras);
   const totalBase = redondear(estancia.total_base);
+  const cargoExtra = redondear(estancia.cargo_extra || 0);
   const totalPedidos = redondear(estancia.total_pedidos);
   const totalHabitacion = sumar(totalBase, totalExtra);
-  const totalFinal = sumar(totalHabitacion, totalPedidos);
-  const pendienteBase = estancia.pagado_base ? 0 : totalBase;
+  const totalFinal = sumar(totalHabitacion, cargoExtra, totalPedidos);
+  // El recargo de reserva se cobra junto con el base: si el base ya se
+  // pagó, el recargo también quedó pagado en ese mismo cobro.
+  const pendienteBase = estancia.pagado_base ? 0 : sumar(totalBase, cargoExtra);
   const totalPendiente = sumar(pendienteBase, totalExtra, totalPedidos);
   return {
     horas_extra: extras,
     total_base: totalBase,
+    cargo_extra: cargoExtra,
     total_extra: totalExtra,
     total_habitacion: totalHabitacion,
     total_pedidos: totalPedidos,
@@ -276,6 +292,7 @@ async function preSalida(hotelId, estanciaId) {
     hora_salida_prevista: estancia.hora_salida_prevista,
     pagado_base: estancia.pagado_base,
     precio_hora_extra: estancia.precio_hora_extra,
+    cargo_descripcion: estancia.cargo_descripcion,
     ...desglose
   };
 }

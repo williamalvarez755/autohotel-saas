@@ -70,6 +70,7 @@ function dibujarDuenos() {
             : '<button class="boton peligro chico" data-accion="suspender">Suspender</button>'}
           <button class="boton secundario chico" data-accion="editar">Editar</button>
           <button class="boton secundario chico" data-accion="historial">Historial</button>
+          <button class="boton peligro chico" data-accion="eliminar" title="Eliminar definitivamente">${icono('x', 13)} Eliminar</button>
         </div>
       </div>
       <div style="margin-top:14px">
@@ -101,6 +102,7 @@ function dibujarDuenos() {
       if (accion === 'pago') modalPago(dueno);
       if (accion === 'suspender') suspenderDueno(dueno, true);
       if (accion === 'reactivar') suspenderDueno(dueno, false);
+      if (accion === 'eliminar') modalEliminarDueno(dueno);
       if (accion === 'editar') modalDueno(dueno);
       if (accion === 'historial') modalHistorial(dueno);
       if (accion === 'nuevo-hotel') modalHotel(dueno, null);
@@ -209,6 +211,39 @@ function suspenderDueno(dueno, suspender) {
     avisoRespuesta(respuesta);
     cerrarModal();
     await cargarDuenos();
+  });
+}
+
+// ---------------- Eliminación definitiva ----------------
+function modalEliminarDueno(dueno) {
+  abrirModal({
+    titulo: `Eliminar definitivamente · ${escapar(dueno.nombre)}`,
+    cuerpo: `
+      <p style="font-size:14px;line-height:1.55">
+        Esta acción <strong>no se puede deshacer</strong>: se borrarán sus
+        ${dueno.hoteles.length} hotel(es) con habitaciones, tarifas, trabajadores,
+        estancias, cobros, reservas, inventario y el historial de pagos.<br>
+        <span class="suave">Si solo dejó de pagar temporalmente, use "Suspender" en su lugar.
+        No se permite eliminar si hay estancias activas sin liquidar.</span>
+      </p>
+      <div class="campo" style="margin-top:14px">
+        <label>Para confirmar, escriba el usuario del dueño: <strong style="color:var(--rojo)">${escapar(dueno.usuario)}</strong></label>
+        <input id="med-confirmar" maxlength="50" autocapitalize="none" autocomplete="off" spellcheck="false">
+      </div>`,
+    pie: `<button class="boton secundario" id="med-cancelar">Cancelar</button>
+          <button class="boton peligro" id="med-eliminar">Eliminar definitivamente</button>`
+  });
+
+  document.getElementById('med-cancelar').addEventListener('click', cerrarModal);
+  document.getElementById('med-eliminar').addEventListener('click', async () => {
+    const confirmacion = valorModal('#med-confirmar');
+    if (!confirmacion) return aviso('Escriba el usuario del dueño para confirmar', true);
+    const respuesta = await apiDelete(`/superadmin/duenos/${dueno.id}`, { confirmar_usuario: confirmacion });
+    avisoRespuesta(respuesta);
+    if (respuesta.success) {
+      cerrarModal();
+      await cargarDuenos();
+    }
   });
 }
 

@@ -351,6 +351,100 @@ async function principal() {
   const superadminProhibido = await llamar('pedro', 'GET', '/superadmin/duenos');
   probar('Un trabajador no accede a rutas del superadmin (403)', superadminProhibido.status === 403);
 
+  console.log('\n=== K. Cargo de reserva (recargo + extras) ===');
+  // Habitación disponible del hotel activo de carlos con tarifas
+  const tableroK = await llamar('carlos', 'GET', '/habitaciones');
+  const libreK = tableroK.data.habitaciones.find((h) => h.estado === 'disponible' && h.tarifas.length);
+  probar('Hay habitación disponible para probar el cargo de reserva', Boolean(libreK));
+
+  const cargoNegativo = await llamar('carlos', 'POST', '/reservas', {
+    habitacion_id: libreK.id, fecha_hora: '2030-01-01 20:00', cargo_extra: -5
+  });
+  probar('Cargo negativo en la reserva es rechazado (400)', cargoNegativo.status === 400);
+
+  const reservaCargo = await llamar('carlos', 'POST', '/reservas', {
+    habitacion_id: libreK.id, fecha_hora: '2030-01-01 20:00', placa: 'E2E-CARGO',
+    cargo_extra: 75.5, cargo_descripcion: 'Decoración con globos'
+  });
+  probar('Se crea reserva con cargo adicional', reservaCargo.success);
+
+  const pendientesK = await llamar('carlos', 'GET', '/reservas');
+  const reservaK = pendientesK.data.pendientes.find((r) => r.id === reservaCargo.data.id);
+  probar('La reserva lista su cargo y descripción',
+    Boolean(reservaK) && Number(reservaK.cargo_extra) === 75.5 && reservaK.cargo_descripcion === 'Decoración con globos');
+
+  const tarifaK = libreK.tarifas[0];
+  const entradaK = await llamar('carlos', 'POST', '/estancias', {
+    habitacion_id: libreK.id, placa: 'E2E-CARGO', tipo: 'horas',
+    tarifa_id: tarifaK.id, reserva_id: reservaCargo.data.id
+  });
+  const totalEsperadoK = Math.round((Number(tarifaK.precio) + 75.5) * 100) / 100;
+  probar('La entrada fotografía el cargo de la reserva',
+    entradaK.success && Number(entradaK.data.cargo_extra) === 75.5
+    && Number(entradaK.data.total_cobro_base) === totalEsperadoK);
+
+  const pagoCortoK = await llamar('carlos', 'POST', `/estancias/${entradaK.data.id}/pago-base`, {
+    metodo: 'efectivo', efectivo_recibido: Number(tarifaK.precio)
+  });
+  probar('El cobro base exige tarifa + cargo (efectivo corto → 400)', pagoCortoK.status === 400);
+
+  const pagoOkK = await llamar('carlos', 'POST', `/estancias/${entradaK.data.id}/pago-base`, {
+    metodo: 'efectivo', efectivo_recibido: totalEsperadoK + 20
+  });
+  probar('Cobro base incluye el cargo y devuelve el cambio correcto',
+    pagoOkK.success && Number(pagoOkK.data.total) === totalEsperadoK && Number(pagoOkK.data.cambio) === 20);
+
+  const preSalidaK = await llamar('carlos', 'GET', `/estancias/${entradaK.data.id}/pre-salida`);
+  probar('Pre-salida muestra el cargo y no queda pendiente tras el cobro base',
+    preSalidaK.success && Number(preSalidaK.data.cargo_extra) === 75.5
+    && Number(preSalidaK.data.total_pendiente) === 0);
+
+  const salidaK = await llamar('carlos', 'POST', `/estancias/${entradaK.data.id}/salida`, {});
+  probar('La salida cierra con total final = tarifa + cargo',
+    salidaK.success && Number(salidaK.data.total_final) === totalEsperadoK);
+
+  const [cobrosK] = await bd.query(
+    'SELECT COALESCE(SUM(monto_total), 0) AS suma FROM cobros WHERE estancia_id = ?',
+    [entradaK.data.id]
+  );
+  probar('El libro de cobros cuadra con el total (tarifa + cargo)',
+    Number(cobrosK[0].suma) === totalEsperadoK);
+  await llamar('carlos', 'POST', `/habitaciones/${libreK.id}/limpia`); // deja la habitación disponible
+
+  console.log('\n=== L. Eliminación definitiva de dueños ===');
+  const eliminarSinConfirmar = await llamar('admin', 'DELETE', `/superadmin/duenos/${duenoNuevo.data.id}`, {});
+  probar('Eliminar sin confirmación es rechazado (400)', eliminarSinConfirmar.status === 400);
+
+  const eliminarMalConfirmado = await llamar('admin', 'DELETE', `/superadmin/duenos/${duenoNuevo.data.id}`, {
+    confirmar_usuario: 'otro.usuario'
+  });
+  probar('Confirmación con usuario equivocado es rechazada (400)', eliminarMalConfirmado.status === 400);
+
+  // Carlos (dueño 2) tiene una estancia activa en su hotel: no se puede eliminar
+  const eliminarConActivas = await llamar('admin', 'DELETE', '/superadmin/duenos/2', {
+    confirmar_usuario: 'carlos'
+  });
+  probar('No se elimina un dueño con estancias activas sin liquidar',
+    !eliminarConActivas.success && eliminarConActivas.message.includes('activa'));
+
+  const eliminarComoTrabajador = await llamar('pedro', 'DELETE', `/superadmin/duenos/${duenoNuevo.data.id}`, {
+    confirmar_usuario: 'e2e.dueno'
+  });
+  probar('Un trabajador no puede eliminar dueños (403)', eliminarComoTrabajador.status === 403);
+
+  const eliminarOk = await llamar('admin', 'DELETE', `/superadmin/duenos/${duenoNuevo.data.id}`, {
+    confirmar_usuario: 'e2e.dueno'
+  });
+  probar('El superadmin elimina al dueño moroso con su jerarquía completa',
+    eliminarOk.success && eliminarOk.data.hoteles_eliminados === 1);
+
+  const duenosTrasEliminar = await llamar('admin', 'GET', '/superadmin/duenos');
+  probar('El dueño eliminado desaparece del listado',
+    !duenosTrasEliminar.data.some((d) => d.usuario === 'e2e.dueno'));
+
+  const loginEliminado = await ingresar('e2e.dueno', 'e2e123');
+  probar('El dueño eliminado ya no puede iniciar sesión', !loginEliminado.success);
+
   await bd.end();
 
   console.log('\n============================================');

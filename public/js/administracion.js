@@ -382,6 +382,7 @@ async function cargarReportes() {
       resultado.innerHTML = tablaPanel(`
         <thead><tr><th>Habitación</th><th>Placa</th><th>Entrada</th><th>Salida</th>
           <th>Tipo</th><th class="centrado">Extra</th><th class="derecha">Habitación</th>
+          <th class="derecha">Cargo</th>
           <th class="derecha">Pedidos</th><th class="derecha">Total</th><th>Estado</th></tr></thead>
         <tbody>${r.data.map((e) => `
           <tr><td><strong>${escapar(e.habitacion_nombre)}</strong></td>
@@ -391,6 +392,9 @@ async function cargarReportes() {
               <td>${e.tipo === 'noche' ? 'Noche' : e.horas_contratadas + ' h'}</td>
               <td class="centrado">${e.horas_extra > 0 ? e.horas_extra + ' h' : '—'}</td>
               <td class="derecha monto">${formatoQ(e.total_habitacion)}</td>
+              <td class="derecha monto">${Number(e.cargo_extra) > 0
+                ? `<span title="${escapar(e.cargo_descripcion)}">${formatoQ(e.cargo_extra)}</span>`
+                : '<span class="suave">—</span>'}</td>
               <td class="derecha monto">${formatoQ(e.total_pedidos)}</td>
               <td class="derecha monto"><strong>${formatoQ(e.total_final)}</strong></td>
               <td>${e.estado === 'activa' ? '<span class="etiqueta roja">Activa</span>' : '<span class="etiqueta verde">Finalizada</span>'}</td></tr>`).join('')}

@@ -48,7 +48,8 @@ async function tablero(hotelId) {
             e.tarifa_nombre, e.hora_entrada, e.hora_salida_prevista, e.pagado_base,
             e.total_base, e.total_pedidos,
             r.id AS reserva_id, r.fecha_hora AS reserva_fecha_hora,
-            r.placa AS reserva_placa, r.nota AS reserva_nota
+            r.placa AS reserva_placa, r.nota AS reserva_nota,
+            r.cargo_extra AS reserva_cargo_extra, r.cargo_descripcion AS reserva_cargo_descripcion
        FROM habitaciones h
        LEFT JOIN estancias e
          ON e.habitacion_id = h.id AND e.estado = 'activa'

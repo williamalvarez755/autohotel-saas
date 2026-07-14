@@ -108,6 +108,7 @@ async function estancias(hotelId, desde, hasta, habitacionId) {
     `SELECT e.id, e.placa, e.tipo, e.horas_contratadas, e.horas_extra,
             e.hora_entrada, e.hora_salida_prevista, e.hora_salida_real,
             e.total_base, e.total_extra, e.total_habitacion,
+            e.cargo_extra, e.cargo_descripcion,
             e.total_pedidos, e.total_final, e.estado,
             h.nombre AS habitacion_nombre
        FROM estancias e

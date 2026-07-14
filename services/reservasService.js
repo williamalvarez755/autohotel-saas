@@ -14,6 +14,7 @@ const { ahoraGT, aEpoch } = require('../utils/fechas');
 async function listar(hotelId) {
   const [pendientes] = await pool.query(
     `SELECT r.id, r.fecha_hora, r.placa, r.nota, r.estado, r.creado_en,
+            r.cargo_extra, r.cargo_descripcion,
             h.id AS habitacion_id, h.nombre AS habitacion_nombre,
             u.nombre AS creado_por_nombre
        FROM reservas r
@@ -25,6 +26,7 @@ async function listar(hotelId) {
   );
   const [historial] = await pool.query(
     `SELECT r.id, r.fecha_hora, r.placa, r.nota, r.estado,
+            r.cargo_extra, r.cargo_descripcion,
             h.nombre AS habitacion_nombre
        FROM reservas r
        JOIN habitaciones h ON h.id = r.habitacion_id
@@ -59,9 +61,13 @@ async function crear(hotelId, usuarioId, datos) {
     }
 
     const [resultado] = await cx.query(
-      `INSERT INTO reservas (hotel_id, habitacion_id, fecha_hora, placa, nota, estado, creado_por, creado_en)
-       VALUES (?, ?, ?, ?, ?, 'pendiente', ?, ?)`,
-      [hotelId, habitacion.id, datos.fecha_hora, datos.placa, datos.nota, usuarioId, ahora]
+      `INSERT INTO reservas
+         (hotel_id, habitacion_id, fecha_hora, placa, nota, cargo_extra, cargo_descripcion, estado, creado_por, creado_en)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)`,
+      [
+        hotelId, habitacion.id, datos.fecha_hora, datos.placa, datos.nota,
+        datos.cargo_extra, datos.cargo_descripcion, usuarioId, ahora
+      ]
     );
 
     await cx.query(

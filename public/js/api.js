@@ -48,3 +48,4 @@ async function api(ruta, opciones = {}) {
 const apiGet = (ruta) => api(ruta);
 const apiPost = (ruta, body = {}) => api(ruta, { method: 'POST', body });
 const apiPut = (ruta, body = {}) => api(ruta, { method: 'PUT', body });
+const apiDelete = (ruta, body = {}) => api(ruta, { method: 'DELETE', body });

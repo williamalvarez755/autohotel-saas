@@ -94,6 +94,7 @@ router.put('/usuarios/:id/activo', soloDuenoSinHotel, e(usuariosController.cambi
 router.get('/superadmin/duenos', soloSuperadmin, e(superadminController.listarDuenos));
 router.post('/superadmin/duenos', soloSuperadmin, e(superadminController.crearDueno));
 router.put('/superadmin/duenos/:id', soloSuperadmin, e(superadminController.editarDueno));
+router.delete('/superadmin/duenos/:id', soloSuperadmin, e(superadminController.eliminarDueno));
 router.post('/superadmin/duenos/:id/suspender', soloSuperadmin, e(superadminController.suspender));
 router.post('/superadmin/duenos/:id/reactivar', soloSuperadmin, e(superadminController.reactivar));
 router.post('/superadmin/duenos/:id/pagos', soloSuperadmin, e(superadminController.registrarPago));

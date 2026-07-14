@@ -200,6 +200,9 @@ CREATE TABLE estancias (
   hora_salida_prevista DATETIME NOT NULL,
   hora_salida_real     DATETIME NULL,
   horas_extra          INT UNSIGNED NOT NULL DEFAULT 0,
+  -- Foto del recargo de la reserva que originó la estancia (si hubo)
+  cargo_extra          DECIMAL(10,2) NOT NULL DEFAULT 0,
+  cargo_descripcion    VARCHAR(200) NOT NULL DEFAULT '',
   total_base           DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_extra          DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_habitacion     DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -269,15 +272,19 @@ CREATE TABLE movimientos_inventario (
 -- RESERVAS
 -- ------------------------------------------------------------
 CREATE TABLE reservas (
-  id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  hotel_id      INT UNSIGNED NOT NULL,
-  habitacion_id INT UNSIGNED NOT NULL,
-  fecha_hora    DATETIME NOT NULL,
-  placa         VARCHAR(20) NOT NULL DEFAULT '',
-  nota          VARCHAR(200) NOT NULL DEFAULT '',
-  estado        ENUM('pendiente','usada','cancelada') NOT NULL DEFAULT 'pendiente',
-  creado_por    INT UNSIGNED NOT NULL,
-  creado_en     DATETIME NOT NULL,
+  id                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  hotel_id          INT UNSIGNED NOT NULL,
+  habitacion_id     INT UNSIGNED NOT NULL,
+  fecha_hora        DATETIME NOT NULL,
+  placa             VARCHAR(20) NOT NULL DEFAULT '',
+  nota              VARCHAR(200) NOT NULL DEFAULT '',
+  -- Recargo por reservar + extras solicitados (ej. decoración).
+  -- Se FOTOGRAFÍA en la estancia al convertir la reserva en entrada.
+  cargo_extra       DECIMAL(10,2) NOT NULL DEFAULT 0,
+  cargo_descripcion VARCHAR(200) NOT NULL DEFAULT '',
+  estado            ENUM('pendiente','usada','cancelada') NOT NULL DEFAULT 'pendiente',
+  creado_por        INT UNSIGNED NOT NULL,
+  creado_en         DATETIME NOT NULL,
   PRIMARY KEY (id),
   KEY idx_reservas_hotel_estado (hotel_id, estado),
   KEY idx_reservas_habitacion_estado (habitacion_id, estado, fecha_hora),

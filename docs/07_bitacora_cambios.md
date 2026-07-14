@@ -4,6 +4,29 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-14 · v2.3 — Cargo extra en reservas + eliminación definitiva de dueños
+
+Dos peticiones del usuario. **Suite e2e: 77 → 94 pruebas.**
+
+### Cargo extra en reservas (recargo + extras como decoración)
+
+Al crear una reserva (dueño O trabajador) se puede indicar `cargo_extra` (Q, opcional) y `cargo_descripcion` (ej. "decoración"). Reglas de dinero:
+
+- **BD**: `reservas` y `estancias` ganan `cargo_extra DECIMAL(10,2)` y `cargo_descripcion VARCHAR(200)` (migración `db/migracion_cargo_reserva.sql`, aplicada en local y Aiven; schema.sql actualizado).
+- El cargo se **FOTOGRAFÍA en la estancia** al convertir la reserva en entrada (mismo principio que las tarifas: editar la reserva o sus precios después jamás altera cobros en curso) y **se cobra junto con el cobro base** (`total = total_base + cargo_extra`); si el base queda pendiente, la salida lo exige completo. `total_final` y el libro de `cobros` lo incluyen (los reportes cuadran).
+- **Frontend**: campos en "Crear reserva", columna "Cargo extra" en pendientes, línea de cargo en los modales de reserva/entrada/cobro/estancia/salida y columna "Cargo" en el reporte de estancias.
+- **Anti-manipulación**: el cliente NO puede mandar cargo en `POST /estancias`; solo se hereda de la reserva almacenada. Cargo negativo → 400.
+
+### Eliminación definitiva de dueños morosos (superadmin)
+
+`DELETE /superadmin/duenos/:id` con `{ confirmar_usuario }`:
+
+- Purga transaccional en orden de dependencias: cobros → pedidos → movimientos → reservas → estancias → tarifas → productos → habitaciones → trabajadores → pagos_servicio → suscripción → hoteles → dueño.
+- Salvaguardas: exige escribir el **usuario exacto** del dueño (400 si no coincide), se niega con **estancias activas** sin liquidar (400), solo rol superadmin (403 al resto). Para impagos temporales sigue existiendo "Suspender".
+- **Frontend**: botón "Eliminar" en cada tarjeta de dueño con modal de confirmación que obliga a escribir el usuario; `apiDelete()` nuevo en `api.js`.
+
+Archivos: `db/schema.sql`, `db/migracion_cargo_reserva.sql` (nuevo), `services/{reservas,estancias,habitaciones,reportes,superadmin}Service.js`, `controllers/{reservas,superadmin}Controller.js`, `routes/index.js`, `public/js/{api,operaciones,superadmin,administracion}.js`, `test/e2e.js` (secciones K y L, 17 pruebas nuevas). Verificado además en navegador: flujo completo reserva Q50 decoración → entrada Q150 → cobro con cambio → salida en Q0 → limpieza.
+
 ## 2026-07-13 · v2.2 — Preparación para despliegue en la nube
 
 El usuario quería subirlo a InfinityFree para pruebas; se documentó que eso es imposible (InfinityFree es solo PHP, este sistema es Node) y se preparó todo para alternativas reales:

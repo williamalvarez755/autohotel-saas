@@ -46,6 +46,14 @@ async function editarDueno(req, res) {
   return ok(res, resultado, 'Dueño actualizado');
 }
 
+async function eliminarDueno(req, res) {
+  const id = v.idValido(req.params.id);
+  // Confirmación fuerte: hay que escribir el usuario exacto del dueño
+  const confirmacion = v.textoRequerido((req.body || {}).confirmar_usuario, 'confirmar_usuario', 50).toLowerCase();
+  const resultado = await superadminService.eliminarDueno(id, confirmacion);
+  return ok(res, resultado, `Dueño "${resultado.nombre}" eliminado definitivamente junto con todos sus datos`);
+}
+
 async function suspender(req, res) {
   const id = v.idValido(req.params.id);
   const resultado = await superadminService.cambiarSuspension(id, true);
@@ -114,6 +122,7 @@ module.exports = {
   listarDuenos,
   crearDueno,
   editarDueno,
+  eliminarDueno,
   suspender,
   reactivar,
   registrarPago,

@@ -40,22 +40,28 @@ function modalEntrada(habitacion, reserva) {
       <div class="desglose">
         <div class="linea"><span>Tiempo incluido</span><strong id="me-tiempo"></strong></div>
         <div class="linea"><span>Hora extra excedida</span><strong>${formatoQ(habitacion.precio_hora_extra)}</strong></div>
+        ${reserva && Number(reserva.cargo_extra) > 0 ? `
+        <div class="linea"><span>Cargo de la reserva${reserva.cargo_descripcion ? ` (${escapar(reserva.cargo_descripcion)})` : ''}</span>
+          <strong class="monto">${formatoQ(reserva.cargo_extra)}</strong></div>` : ''}
         <div class="linea grande"><span>Total a cobrar</span><span class="monto" id="me-total"></span></div>
       </div>`,
     pie: `<button class="boton secundario" id="me-cancelar">Cancelar</button>
           <button class="boton" id="me-registrar">Registrar entrada</button>`
   });
 
+  // El cargo de la reserva (si existe) se suma al total mostrado;
+  // el backend lo calcula igual desde la reserva fotografiada.
+  const cargoReserva = reserva ? Number(reserva.cargo_extra) || 0 : 0;
   const actualizarTotal = () => {
     const valor = opcionActiva(document.getElementById('me-tipo'));
     if (valor === 'noche') {
-      document.getElementById('me-total').textContent = formatoQ(habitacion.precio_noche);
+      document.getElementById('me-total').textContent = formatoQ(Number(habitacion.precio_noche) + cargoReserva);
       document.getElementById('me-tiempo').textContent = 'Noche completa';
       return;
     }
     const tarifa = tarifas.find((t) => `tarifa-${t.id}` === valor);
     if (tarifa) {
-      document.getElementById('me-total').textContent = formatoQ(tarifa.precio);
+      document.getElementById('me-total').textContent = formatoQ(Number(tarifa.precio) + cargoReserva);
       document.getElementById('me-tiempo').textContent = `${tarifa.horas} hora${tarifa.horas > 1 ? 's' : ''} (${tarifa.nombre})`;
     }
   };
@@ -85,6 +91,8 @@ function modalEntrada(habitacion, reserva) {
 // COBRO BASE (adelantado)
 // ============================================================
 function modalCobroBase(estancia) {
+  const cargoExtra = Number(estancia.cargo_extra) || 0;
+  const totalCobro = Number(estancia.total_base) + cargoExtra;
   abrirModal({
     titulo: `Cobro · ${escapar(estancia.habitacion_nombre)}`,
     cuerpo: `
@@ -93,7 +101,11 @@ function modalCobroBase(estancia) {
         <div class="linea"><span>Tarifa</span>
           <strong>${escapar(estancia.tarifa_nombre) || (estancia.tipo === 'noche' ? 'Noche completa' : estancia.horas_contratadas + ' hora(s)')} · ${estancia.horas_contratadas} h</strong></div>
         <div class="linea"><span>Salida prevista</span><strong>${formatoFechaHora(estancia.hora_salida_prevista)}</strong></div>
-        <div class="linea grande"><span>Total a pagar</span><span class="monto">${formatoQ(estancia.total_base)}</span></div>
+        ${cargoExtra > 0 ? `
+        <div class="linea"><span>Habitación</span><span class="monto">${formatoQ(estancia.total_base)}</span></div>
+        <div class="linea"><span>Cargo de reserva${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
+          <span class="monto">${formatoQ(cargoExtra)}</span></div>` : ''}
+        <div class="linea grande"><span>Total a pagar</span><span class="monto">${formatoQ(totalCobro)}</span></div>
       </div>
       <div class="campo"><label>Método de pago</label>
         <div class="grupo-opciones" id="mc-metodo">
@@ -107,7 +119,7 @@ function modalCobroBase(estancia) {
           <button class="boton" id="mc-confirmar">Confirmar pago</button>`
   });
 
-  const total = Number(estancia.total_base);
+  const total = totalCobro;
   const inputRecibido = document.getElementById('mc-recibido');
   const cajaCambio = document.getElementById('mc-cambio');
 
@@ -166,6 +178,9 @@ async function modalEstancia(habitacion) {
           <strong class="monto" data-tipo-contador="transcurrido" data-epoch="${estancia.entrada_epoch}"></strong></div>
         <div class="linea"><span>Tarifa</span>
           <strong>${escapar(estancia.tarifa_nombre) || (estancia.tipo === 'noche' ? 'Noche completa' : estancia.horas_contratadas + ' hora(s)')} · ${formatoQ(estancia.total_base)}</strong></div>
+        ${Number(estancia.cargo_extra) > 0 ? `
+        <div class="linea"><span>Cargo de reserva${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
+          <strong class="monto">${formatoQ(estancia.cargo_extra)}</strong></div>` : ''}
         <div class="linea"><span>Cobro base</span>
           ${estancia.pagado_base
             ? '<span class="etiqueta verde">Pagado</span>'
@@ -198,7 +213,9 @@ async function modalEstancia(habitacion) {
         tarifa_nombre: estancia.tarifa_nombre,
         horas_contratadas: estancia.horas_contratadas,
         hora_salida_prevista: estancia.hora_salida_prevista,
-        total_base: estancia.total_base
+        total_base: estancia.total_base,
+        cargo_extra: estancia.cargo_extra,
+        cargo_descripcion: estancia.cargo_descripcion
       });
     });
   }
@@ -373,6 +390,10 @@ async function modalSalida(estanciaId) {
         <div class="linea"><span>Habitación (${escapar(d.tarifa_nombre) || (d.tipo === 'noche' ? 'noche' : d.horas_contratadas + ' h')})
           ${d.pagado_base ? '<span class="suave">· ya pagado</span>' : ''}</span>
           <span class="monto">${formatoQ(d.total_base)}</span></div>
+        ${Number(d.cargo_extra) > 0 ? `
+        <div class="linea"><span>Cargo de reserva${d.cargo_descripcion ? ` (${escapar(d.cargo_descripcion)})` : ''}
+          ${d.pagado_base ? '<span class="suave">· ya pagado</span>' : ''}</span>
+          <span class="monto">${formatoQ(d.cargo_extra)}</span></div>` : ''}
         ${d.horas_extra > 0 ? `
         <div class="linea excedido-linea"><span>Horas extra (${d.horas_extra} × ${formatoQ(d.precio_hora_extra)})</span>
           <span class="monto">${formatoQ(d.total_extra)}</span></div>` : ''}
@@ -557,12 +578,20 @@ function modalReservaHabitacion(habitacion) {
           <strong>${habitacion.reserva_fecha_hora ? formatoFechaHora(habitacion.reserva_fecha_hora) : '—'}</strong></div>
         <div class="linea"><span>Placa</span><strong>${escapar(habitacion.reserva_placa) || '—'}</strong></div>
         ${habitacion.reserva_nota ? `<div class="linea"><span>Nota</span><strong>${escapar(habitacion.reserva_nota)}</strong></div>` : ''}
+        ${Number(habitacion.reserva_cargo_extra) > 0 ? `
+        <div class="linea"><span>Cargo adicional${habitacion.reserva_cargo_descripcion ? ` (${escapar(habitacion.reserva_cargo_descripcion)})` : ''}</span>
+          <strong class="monto">${formatoQ(habitacion.reserva_cargo_extra)}</strong></div>` : ''}
       </div>`,
     pie: `<button class="boton peligro" id="mr-cancelar-reserva">Cancelar reserva</button>
           <button class="boton" id="mr-llego">${icono('carro', 15)} El cliente llegó</button>`
   });
   document.getElementById('mr-llego').addEventListener('click', () => {
-    modalEntrada(habitacion, { id: habitacion.reserva_id, placa: habitacion.reserva_placa });
+    modalEntrada(habitacion, {
+      id: habitacion.reserva_id,
+      placa: habitacion.reserva_placa,
+      cargo_extra: habitacion.reserva_cargo_extra,
+      cargo_descripcion: habitacion.reserva_cargo_descripcion
+    });
   });
   document.getElementById('mr-cancelar-reserva').addEventListener('click', async () => {
     const respuesta = await apiPost(`/reservas/${habitacion.reserva_id}/cancelar`);
@@ -596,13 +625,16 @@ async function cargarReservas() {
     <div id="lista-reservas">
     ${pendientes.length ? `
       <div class="envoltura-tabla panel" style="padding:6px 12px"><table class="tabla">
-        <thead><tr><th>Habitación</th><th>Fecha y hora</th><th>Placa</th><th>Nota</th><th>Creó</th><th></th></tr></thead>
+        <thead><tr><th>Habitación</th><th>Fecha y hora</th><th>Placa</th><th>Nota</th><th class="derecha">Cargo extra</th><th>Creó</th><th></th></tr></thead>
         <tbody>${pendientes.map((r) => `
           <tr>
             <td><strong>${escapar(r.habitacion_nombre)}</strong></td>
             <td>${formatoFechaHora(r.fecha_hora)}</td>
             <td>${escapar(r.placa) || '—'}</td>
             <td class="suave">${escapar(r.nota) || '—'}</td>
+            <td class="derecha monto">${Number(r.cargo_extra) > 0
+              ? `<strong title="${escapar(r.cargo_descripcion)}">${formatoQ(r.cargo_extra)}</strong>`
+              : '<span class="suave">—</span>'}</td>
             <td class="suave">${escapar(r.creado_por_nombre)}</td>
             <td class="derecha" style="white-space:nowrap">
               <button class="boton mini" data-convertir="${r.id}" data-habitacion="${r.habitacion_id}">Llegó</button>
@@ -664,7 +696,15 @@ function modalCrearReserva(habitacionesDisponibles) {
         <input id="mcr-placa" maxlength="20" autocapitalize="characters"></div>
       <div class="campo"><label>Nota (opcional)</label>
         <input id="mcr-nota" maxlength="200"></div>
-      <div class="ayuda suave">La habitación quedará en morado (reservada) hasta que el cliente llegue o se cancele.</div>`,
+      <div class="fila-campos">
+        <div class="campo"><label>Cargo adicional (Q)</label>
+          <input id="mcr-cargo" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+          <div class="ayuda">Recargo por reservar y/o extras solicitados</div></div>
+        <div class="campo"><label>Detalle del cargo (opcional)</label>
+          <input id="mcr-cargo-detalle" maxlength="200" placeholder="Ej.: decoración, pétalos, globos"></div>
+      </div>
+      <div class="ayuda suave">La habitación quedará en morado (reservada) hasta que el cliente llegue o se cancele.
+        El cargo adicional se cobrará junto con la tarifa al registrar la entrada.</div>`,
     pie: `<button class="boton secundario" id="mcr-cancelar">Cancelar</button>
           <button class="boton" id="mcr-crear">Crear reserva</button>`
   });
@@ -676,7 +716,9 @@ function modalCrearReserva(habitacionesDisponibles) {
       habitacion_id: Number(valorModal('#mcr-habitacion')),
       fecha_hora: fechaCruda.replace('T', ' '),
       placa: valorModal('#mcr-placa').toUpperCase(),
-      nota: valorModal('#mcr-nota')
+      nota: valorModal('#mcr-nota'),
+      cargo_extra: valorModal('#mcr-cargo') === '' ? 0 : Number(valorModal('#mcr-cargo')),
+      cargo_descripcion: valorModal('#mcr-cargo-detalle')
     });
     if (!respuesta.success) return avisoRespuesta(respuesta);
     aviso('Reserva creada en ' + respuesta.data.habitacion_nombre);

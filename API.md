@@ -126,12 +126,13 @@ Trabajador: `precio` opcional (si no lo sabe queda en 0 y el dueño lo confirma)
 
 ## Reservas
 
-### GET /reservas — [D][T] — `{ pendientes: [...], historial: [...] }`
+### GET /reservas — [D][T] — `{ pendientes: [...], historial: [...] }` (incluye `cargo_extra` y `cargo_descripcion`)
 ### POST /reservas — [D][T]
 ```json
-{ "habitacion_id": 4, "fecha_hora": "2026-07-13 20:00", "placa": "P-9XY", "nota": "Cliente frecuente" }
+{ "habitacion_id": 4, "fecha_hora": "2026-07-13 20:00", "placa": "P-9XY", "nota": "Cliente frecuente",
+  "cargo_extra": 50, "cargo_descripcion": "Decoración" }
 ```
-Solo habitaciones disponibles; fecha futura. Habitación → RESERVADA.
+Solo habitaciones disponibles; fecha futura. Habitación → RESERVADA. `cargo_extra` (opcional, ≥ 0): recargo por reservar y/o extras solicitados; al convertir la reserva en entrada se FOTOGRAFÍA en la estancia y se cobra junto con la tarifa en el cobro base (la entrada devuelve `total_cobro_base = total_base + cargo_extra`).
 ### POST /reservas/:id/cancelar — [D][T] — reserva → cancelada, habitación → DISPONIBLE.
 Para convertirla en entrada: `POST /estancias` con `reserva_id`.
 
@@ -174,6 +175,8 @@ Reglas de rango: formato `AAAA-MM-DD`, `desde ≤ hasta`, máximo 366 días.
 Cada dueño: datos, suscripción (`suscripcion_estado`, `fecha_vencimiento`), **`estado_calculado`** (`activa | por_vencer | vencida | suspendida`), hoteles y trabajadores activos.
 ### POST /superadmin/duenos — [S] — `{ nombre, usuario, password, fecha_vencimiento? }` (por defecto: hoy + 1 mes).
 ### PUT /superadmin/duenos/:id — [S] — `{ nombre, password? }`
+### DELETE /superadmin/duenos/:id — [S] — `{ confirmar_usuario }` (el usuario EXACTO del dueño)
+Elimina DEFINITIVAMENTE al dueño y toda su jerarquía (hoteles, trabajadores, habitaciones, tarifas, estancias, cobros, reservas, inventario, pagos, suscripción) en una transacción. Rechazado (400) sin confirmación correcta o si hay estancias activas sin liquidar. Pensado para cuentas morosas que quedaron como datos muertos.
 ### POST /superadmin/duenos/:id/suspender — [S] — bloquea al dueño y a TODOS sus trabajadores (también sesiones abiertas).
 ### POST /superadmin/duenos/:id/reactivar — [S] — quita la suspensión manual (si está vencida sigue bloqueada hasta pagar).
 ### POST /superadmin/duenos/:id/pagos — [S]

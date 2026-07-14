@@ -5,7 +5,7 @@
 
 const bcrypt = require('bcrypt');
 const { pool } = require('../db/pool');
-const { ROLES, MENSAJES } = require('../config/constantes');
+const { ROLES, MENSAJES, LIMITES } = require('../config/constantes');
 const { ErrorNegocio } = require('../middleware/errores');
 const { suscripcionBloqueada } = require('../middleware/auth');
 const { hotelesDeDueno } = require('../middleware/tenant');
@@ -101,6 +101,31 @@ async function infoSesion(usuario, session) {
   return datos;
 }
 
+/**
+ * Cambio de contraseña PROPIA (superadmin y dueños; el rol se
+ * restringe en la ruta). Los trabajadores no tienen autoservicio:
+ * su contraseña la administra únicamente su dueño.
+ * Exige la contraseña actual para evitar que una sesión abierta
+ * abandonada permita el secuestro de la cuenta.
+ */
+async function cambiarPassword(usuarioId, passwordActual, passwordNueva) {
+  const [filas] = await pool.query(
+    'SELECT id, password_hash FROM usuarios WHERE id = ? AND activo = 1 LIMIT 1',
+    [usuarioId]
+  );
+  if (!filas.length) throw new ErrorNegocio('Usuario no encontrado', 404);
+
+  const coincide = await bcrypt.compare(passwordActual, filas[0].password_hash);
+  if (!coincide) throw new ErrorNegocio('La contraseña actual no es correcta');
+  if (passwordActual === passwordNueva) {
+    throw new ErrorNegocio('La contraseña nueva debe ser distinta a la actual');
+  }
+
+  const hash = await bcrypt.hash(passwordNueva, LIMITES.RONDAS_BCRYPT);
+  await pool.query('UPDATE usuarios SET password_hash = ? WHERE id = ?', [hash, usuarioId]);
+  return { id: usuarioId };
+}
+
 /** Cambia el hotel activo de un dueño, validando que le pertenezca. */
 async function cambiarHotelActivo(usuario, session, hotelId) {
   if (usuario.rol !== ROLES.DUENO) {
@@ -117,4 +142,4 @@ async function cambiarHotelActivo(usuario, session, hotelId) {
   return { hotel_activo_id: filas[0].id, nombre: filas[0].nombre };
 }
 
-module.exports = { login, infoSesion, cambiarHotelActivo, rutaSegunRol };
+module.exports = { login, infoSesion, cambiarHotelActivo, cambiarPassword, rutaSegunRol };

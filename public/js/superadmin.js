@@ -21,6 +21,8 @@ document.getElementById('boton-salir').addEventListener('click', async () => {
   window.location.href = '/';
 });
 
+document.getElementById('boton-password').addEventListener('click', modalCambiarPassword);
+
 document.getElementById('boton-nuevo-dueno').addEventListener('click', () => modalDueno(null));
 
 // ---------------- Listado ----------------

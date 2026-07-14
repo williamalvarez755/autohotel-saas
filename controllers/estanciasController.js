@@ -23,7 +23,8 @@ async function registrarEntrada(req, res) {
   const cuerpo = req.body || {};
   const datos = {
     habitacion_id: v.idValido(cuerpo.habitacion_id, 'habitacion_id'),
-    placa: v.textoRequerido(cuerpo.placa, 'placa del vehículo', 20).toUpperCase(),
+    // Opcional: hay clientes que llegan a pie (sin vehículo)
+    placa: v.textoOpcional(cuerpo.placa, 'placa del vehículo', 20).toUpperCase(),
     tipo: v.opcionValida(cuerpo.tipo, 'tipo de servicio', Object.values(TIPOS_ESTANCIA)),
     tarifa_id: null,
     reserva_id: cuerpo.reserva_id ? v.idValido(cuerpo.reserva_id, 'reserva_id') : null

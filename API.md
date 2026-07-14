@@ -33,6 +33,8 @@ Errores: credenciales (401) · usuario desactivado (403) · `"Servicio suspendid
 
 ### POST /auth/logout — cualquiera con sesión
 ### GET /auth/sesion — [S][D][T] → misma data del login (para restaurar la sesión en el frontend)
+### PUT /auth/password — [S][D] — `{ password_actual, password_nueva }`
+Cambio de contraseña PROPIA. Exige la contraseña actual (incorrecta → 400) y la nueva de 6–72 caracteres, distinta a la actual. Los trabajadores NO tienen autoservicio (403): su contraseña la administra su dueño vía `PUT /usuarios/:id`.
 ### POST /auth/hotel-activo — [D]
 ```json
 { "hotel_id": 2 }
@@ -71,7 +73,7 @@ Cambio manual para casos especiales. Bloqueado si hay estancia activa; si estaba
 { "habitacion_id": 3, "placa": "P-777XY", "tipo": "noche" }
 { "habitacion_id": 3, "placa": "P-777XY", "tipo": "horas", "tarifa_id": 5, "reserva_id": 5 }
 ```
-Reglas: habitación disponible (o reservada solo con su `reserva_id`). `tipo horas` exige `tarifa_id` **del menú de esa habitación** (una tarifa de otra habitación u otro hotel → 404): la tarifa dicta `total_base` (su precio) y la duración (`hora_salida_prevista = entrada + horas de la tarifa`). `tipo noche`: `total_base = precio_noche`, duración = `horas_noche` del hotel. La estancia **fotografía** `tarifa_nombre` y `precio_hora_extra` — cambios de precios posteriores no la afectan. Habitación → OCUPADA; reserva → usada.
+Reglas: habitación disponible (o reservada solo con su `reserva_id`). `placa` es **opcional** (clientes que llegan a pie: se guarda vacía). `tipo horas` exige `tarifa_id` **del menú de esa habitación** (una tarifa de otra habitación u otro hotel → 404): la tarifa dicta `total_base` (su precio) y la duración (`hora_salida_prevista = entrada + horas de la tarifa`). `tipo noche`: `total_base = precio_noche`, duración = `horas_noche` del hotel. La estancia **fotografía** `tarifa_nombre`, `precio_hora_extra` y el `cargo_extra` de la reserva (si hubo) — cambios de precios posteriores no la afectan. Habitación → OCUPADA; reserva → usada.
 → `data`: estancia con totales para la pantalla de cobro.
 
 ### POST /estancias/:id/pago-base — [D][T] — cobro adelantado

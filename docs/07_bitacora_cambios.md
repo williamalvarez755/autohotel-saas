@@ -4,6 +4,20 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-14 · v2.4 — Contraseña propia (superadmin/dueños) + placa opcional
+
+**Suite e2e: 94 → 104 pruebas.**
+
+### Cambio de contraseña propia
+
+`PUT /auth/password` con `{ password_actual, password_nueva }`, solo **superadmin y dueños** (privacidad: nadie más tiene que conocer su clave). Reglas: exige la contraseña actual correcta (400 si no), nueva de 6–72 caracteres y distinta a la actual. Los **trabajadores NO tienen autoservicio** (403): su contraseña la administra únicamente su dueño en la sección Usuarios, como hasta ahora. Frontend: botón de llave en la barra superior (visible para dueño y superadmin; oculto para trabajadores) que abre `modalCambiarPassword()` (nuevo, en `comun.js`, compartido por ambos paneles) con actual/nueva/repetir y validación en cliente + servidor.
+
+### Placa opcional en la entrada
+
+Hay parejas que llegan a pie: `POST /estancias` ya no exige `placa` (`textoOpcional`, se guarda `''`). El formulario dice "(opcional)" y todas las vistas (tablero, estancias, modales de cobro/pedidos/salida, alertas y reporte de estancias) muestran "—" o "sin placa" cuando viene vacía. Sin migración de BD (la columna ya aceptaba cadena vacía).
+
+Archivos: `services/authService.js`, `controllers/{auth,estancias}Controller.js`, `routes/index.js`, `public/{app,superadmin}.html`, `public/js/{comun,iconos,app,operaciones,superadmin,administracion}.js`, `test/e2e.js` (sección M, 10 pruebas nuevas). Verificado en navegador: modal de contraseña en ambos paneles, botón oculto para trabajadores, formulario de entrada con placa opcional.
+
 ## 2026-07-14 · v2.3 — Cargo extra en reservas + eliminación definitiva de dueños
 
 Dos peticiones del usuario. **Suite e2e: 77 → 94 pruebas.**

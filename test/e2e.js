@@ -445,6 +445,59 @@ async function principal() {
   const loginEliminado = await ingresar('e2e.dueno', 'e2e123');
   probar('El dueño eliminado ya no puede iniciar sesión', !loginEliminado.success);
 
+  console.log('\n=== M. Contraseña propia y entrada sin placa ===');
+  const passTrabajador = await llamar('pedro', 'PUT', '/auth/password', {
+    password_actual: 'trab123', password_nueva: 'nueva123'
+  });
+  probar('Un trabajador NO puede cambiar su propia contraseña (403)', passTrabajador.status === 403);
+
+  const passActualMala = await llamar('carlos', 'PUT', '/auth/password', {
+    password_actual: 'equivocada', password_nueva: 'nueva123'
+  });
+  probar('Contraseña actual incorrecta es rechazada (400)', passActualMala.status === 400);
+
+  const passCorta = await llamar('carlos', 'PUT', '/auth/password', {
+    password_actual: 'dueno123', password_nueva: '123'
+  });
+  probar('Contraseña nueva de menos de 6 caracteres es rechazada (400)', passCorta.status === 400);
+
+  await ingresar('maria', 'dueno123');
+  const passMaria = await llamar('maria', 'PUT', '/auth/password', {
+    password_actual: 'dueno123', password_nueva: 'privada456'
+  });
+  probar('La dueña cambia su propia contraseña', passMaria.success);
+  const mariaVieja = await ingresar('maria', 'dueno123');
+  probar('La contraseña anterior deja de funcionar', mariaVieja.status === 401);
+  const mariaNueva = await ingresar('maria', 'privada456');
+  probar('La dueña entra con su contraseña nueva', mariaNueva.success);
+  await llamar('maria', 'PUT', '/auth/password', {
+    password_actual: 'privada456', password_nueva: 'dueno123'
+  }); // la regresa para dejar el seed consistente
+
+  const passAdmin = await llamar('admin', 'PUT', '/auth/password', {
+    password_actual: 'admin123', password_nueva: 'superclave9'
+  });
+  probar('El superadmin cambia su propia contraseña', passAdmin.success);
+  const adminNuevo = await ingresar('admin', 'superclave9');
+  probar('El superadmin entra con la contraseña nueva', adminNuevo.success);
+  await llamar('admin', 'PUT', '/auth/password', {
+    password_actual: 'superclave9', password_nueva: 'admin123'
+  });
+
+  // Clientes que llegan a pie: la placa es opcional
+  const tableroM = await llamar('carlos', 'GET', '/habitaciones');
+  const libreM = tableroM.data.habitaciones.find((h) => h.estado === 'disponible' && h.tarifas.length);
+  const entradaSinPlaca = await llamar('carlos', 'POST', '/estancias', {
+    habitacion_id: libreM.id, tipo: 'horas', tarifa_id: libreM.tarifas[0].id
+  });
+  probar('Se registra entrada SIN placa (clientes a pie)',
+    entradaSinPlaca.success && entradaSinPlaca.data.placa === '');
+  const salidaSinPlaca = await llamar('carlos', 'POST', `/estancias/${entradaSinPlaca.data.id}/salida`, {
+    metodo: 'efectivo', efectivo_recibido: 10000
+  });
+  probar('La estancia sin placa se liquida y finaliza normal', salidaSinPlaca.success);
+  await llamar('carlos', 'POST', `/habitaciones/${libreM.id}/limpia`);
+
   await bd.end();
 
   console.log('\n============================================');

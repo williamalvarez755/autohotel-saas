@@ -386,7 +386,7 @@ async function cargarReportes() {
           <th class="derecha">Pedidos</th><th class="derecha">Total</th><th>Estado</th></tr></thead>
         <tbody>${r.data.map((e) => `
           <tr><td><strong>${escapar(e.habitacion_nombre)}</strong></td>
-              <td>${escapar(e.placa)}</td>
+              <td>${escapar(e.placa) || '<span class="suave">—</span>'}</td>
               <td style="white-space:nowrap">${formatoFechaHora(e.hora_entrada)}</td>
               <td style="white-space:nowrap">${e.hora_salida_real ? formatoFechaHora(e.hora_salida_real) : '—'}</td>
               <td>${e.tipo === 'noche' ? 'Noche' : e.horas_contratadas + ' h'}</td>

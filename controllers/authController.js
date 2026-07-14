@@ -50,4 +50,14 @@ async function cambiarHotel(req, res) {
   return ok(res, datos, 'Hotel activo cambiado');
 }
 
-module.exports = { login, logout, sesion, cambiarHotel };
+async function cambiarPassword(req, res) {
+  const cuerpo = req.body || {};
+  if (typeof cuerpo.password_actual !== 'string' || !cuerpo.password_actual) {
+    throw new ErrorNegocio('Debe indicar su contraseña actual');
+  }
+  const nueva = v.contrasena(cuerpo.password_nueva);
+  const datos = await authService.cambiarPassword(req.usuario.id, cuerpo.password_actual, nueva);
+  return ok(res, datos, 'Contraseña actualizada');
+}
+
+module.exports = { login, logout, sesion, cambiarHotel, cambiarPassword };

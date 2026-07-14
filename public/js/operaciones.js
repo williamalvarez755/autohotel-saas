@@ -25,8 +25,8 @@ function modalEntrada(habitacion, reserva) {
   abrirModal({
     titulo: `Registrar entrada · ${escapar(habitacion.nombre)}`,
     cuerpo: `
-      <div class="campo"><label>Placa del vehículo</label>
-        <input id="me-placa" maxlength="20" autocapitalize="characters" placeholder="P-123ABC"
+      <div class="campo"><label>Placa del vehículo (opcional)</label>
+        <input id="me-placa" maxlength="20" autocapitalize="characters" placeholder="P-123ABC · déjelo vacío si llegan a pie"
                value="${reserva && reserva.placa ? escapar(reserva.placa) : ''}"></div>
       <div class="campo"><label>Tarifa</label>
         <div class="grupo-opciones tarifas" id="me-tipo">
@@ -97,7 +97,7 @@ function modalCobroBase(estancia) {
     titulo: `Cobro · ${escapar(estancia.habitacion_nombre)}`,
     cuerpo: `
       <div class="desglose">
-        <div class="linea"><span>Placa</span><strong>${escapar(estancia.placa)}</strong></div>
+        <div class="linea"><span>Placa</span><strong>${escapar(estancia.placa) || '—'}</strong></div>
         <div class="linea"><span>Tarifa</span>
           <strong>${escapar(estancia.tarifa_nombre) || (estancia.tipo === 'noche' ? 'Noche completa' : estancia.horas_contratadas + ' hora(s)')} · ${estancia.horas_contratadas} h</strong></div>
         <div class="linea"><span>Salida prevista</span><strong>${formatoFechaHora(estancia.hora_salida_prevista)}</strong></div>
@@ -168,7 +168,7 @@ async function modalEstancia(habitacion) {
   const { estancia, pedidos } = respuesta.data;
 
   abrirModal({
-    titulo: `${escapar(estancia.habitacion_nombre)} · Placa ${escapar(estancia.placa)}`,
+    titulo: `${escapar(estancia.habitacion_nombre)}${estancia.placa ? ' · Placa ' + escapar(estancia.placa) : ''}`,
     ancho: true,
     cuerpo: `
       <div class="desglose">
@@ -241,7 +241,7 @@ async function modalPedidos(estancia) {
   let seleccionado = null;
 
   abrirModal({
-    titulo: `Pedidos · ${escapar(estancia.habitacion_nombre)} (${escapar(estancia.placa)})`,
+    titulo: `Pedidos · ${escapar(estancia.habitacion_nombre)}${estancia.placa ? ` (${escapar(estancia.placa)})` : ''}`,
     ancho: true,
     cuerpo: `
       <div class="buscador-pos">
@@ -382,7 +382,7 @@ async function modalSalida(estanciaId) {
   const hayPendiente = d.total_pendiente > 0;
 
   abrirModal({
-    titulo: `Salida · ${escapar(d.habitacion_nombre)} (${escapar(d.placa)})`,
+    titulo: `Salida · ${escapar(d.habitacion_nombre)}${d.placa ? ` (${escapar(d.placa)})` : ''}`,
     cuerpo: `
       <div class="desglose">
         <div class="linea"><span>Entrada</span><strong>${formatoFechaHora(d.hora_entrada)}</strong></div>
@@ -478,7 +478,7 @@ async function cargarEstancias() {
       <tbody>${estancias.map((e) => `
         <tr>
           <td><strong>${escapar(e.habitacion_nombre)}</strong></td>
-          <td>${escapar(e.placa)}</td>
+          <td>${escapar(e.placa) || '<span class="suave">—</span>'}</td>
           <td>${escapar(e.tarifa_nombre) || (e.tipo === 'noche' ? 'Noche' : e.horas_contratadas + ' h')}</td>
           <td>${formatoHora(e.hora_entrada)}</td>
           <td class="monto" data-tipo-contador="transcurrido" data-epoch="${e.entrada_epoch}"></td>

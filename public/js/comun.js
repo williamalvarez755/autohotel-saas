@@ -135,6 +135,38 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') cerrarModal();
 });
 
+// ---------------- Cambio de contraseña propia ----------------
+/** Modal compartido (dueños y superadmin) para cambiar SU contraseña. */
+function modalCambiarPassword() {
+  abrirModal({
+    titulo: 'Cambiar mi contraseña',
+    cuerpo: `
+      <div class="campo"><label>Contraseña actual</label>
+        <input id="mcp-actual" type="password" maxlength="72" autocomplete="current-password"></div>
+      <div class="campo"><label>Contraseña nueva</label>
+        <input id="mcp-nueva" type="password" maxlength="72" autocomplete="new-password">
+        <div class="ayuda">Mínimo 6 caracteres</div></div>
+      <div class="campo"><label>Repita la contraseña nueva</label>
+        <input id="mcp-repetida" type="password" maxlength="72" autocomplete="new-password"></div>`,
+    pie: `<button class="boton secundario" id="mcp-cancelar">Cancelar</button>
+          <button class="boton" id="mcp-guardar">Cambiar contraseña</button>`
+  });
+
+  document.getElementById('mcp-cancelar').addEventListener('click', cerrarModal);
+  document.getElementById('mcp-guardar').addEventListener('click', async () => {
+    const actual = document.querySelector('.fondo-modal #mcp-actual').value;
+    const nueva = document.querySelector('.fondo-modal #mcp-nueva').value;
+    const repetida = document.querySelector('.fondo-modal #mcp-repetida').value;
+    if (!actual) return aviso('Escriba su contraseña actual', true);
+    if (nueva.length < 6) return aviso('La contraseña nueva debe tener al menos 6 caracteres', true);
+    if (nueva !== repetida) return aviso('Las contraseñas nuevas no coinciden', true);
+
+    const respuesta = await apiPut('/auth/password', { password_actual: actual, password_nueva: nueva });
+    avisoRespuesta(respuesta);
+    if (respuesta.success) cerrarModal();
+  });
+}
+
 // ---------------- Ayudas de formularios ----------------
 /** Lee el valor de un input dentro del modal abierto. */
 function valorModal(selector) {

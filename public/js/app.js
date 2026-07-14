@@ -55,6 +55,14 @@ function ahoraServidor() {
   });
   document.getElementById('boton-alertas').addEventListener('click', modalAlertas);
 
+  // Cambio de contraseña propia: solo dueños (los trabajadores la
+  // administran a través de su dueño, en la sección Usuarios).
+  const botonPassword = document.getElementById('boton-password');
+  if (botonPassword && App.esDueno) {
+    botonPassword.classList.remove('oculto');
+    botonPassword.addEventListener('click', modalCambiarPassword);
+  }
+
   mostrarSeccion(App.esDueno ? 'dashboard' : 'tablero');
   await refrescarAlertas();
 
@@ -263,7 +271,7 @@ function dibujarTablero() {
     } else if (h.estado === 'ocupada') {
       cuerpo = `
         <div class="detalle-hab">
-          <div>Placa: <strong>${escapar(h.placa)}</strong> · ${escapar(h.tarifa_nombre) || (h.tipo === 'noche' ? 'Noche' : h.horas_contratadas + ' h')}</div>
+          <div>Placa: <strong>${escapar(h.placa) || '—'}</strong> · ${escapar(h.tarifa_nombre) || (h.tipo === 'noche' ? 'Noche' : h.horas_contratadas + ' h')}</div>
           ${h.pagado_base ? '' : '<div style="margin-top:4px"><span class="etiqueta amarilla">Cobro base pendiente</span></div>'}
         </div>
         <div class="contador" data-tipo-contador="transcurrido" data-epoch="${h.entrada_epoch}">00:00:00</div>
@@ -393,7 +401,7 @@ function htmlListaAlertas(alertas) {
   const piezas = [];
   alertas.tiempo_excedido.forEach((a) => {
     piezas.push(`<div class="alerta-item"><span class="ico">${icono('reloj', 16)}</span><div>
-      <strong>${escapar(a.habitacion_nombre)}</strong> — tiempo excedido (placa ${escapar(a.placa)})
+      <strong>${escapar(a.habitacion_nombre)}</strong> — tiempo excedido (${escapar(a.placa) ? 'placa ' + escapar(a.placa) : 'sin placa'})
       <div class="detalle">Debió salir a las ${formatoHora(a.hora_salida_prevista)} · lleva ${formatoMinutos(a.minutos_excedidos)} de más</div>
     </div></div>`);
   });

@@ -37,6 +37,9 @@ router.post('/auth/login', limitadorLogin, e(authController.login));
 router.post('/auth/logout', e(authController.logout));
 router.get('/auth/sesion', requiereSesion, e(authController.sesion));
 router.post('/auth/hotel-activo', requiereSesion, e(authController.cambiarHotel));
+// Cambio de contraseña propia: solo superadmin y dueños. Los
+// trabajadores no tienen autoservicio (su dueño la administra).
+router.put('/auth/password', requiereSesion, requiereRol(ROLES.SUPERADMIN, ROLES.DUENO), e(authController.cambiarPassword));
 
 // ---------------- Habitaciones ----------------
 router.get('/habitaciones', operacion, e(habitacionesController.tablero));

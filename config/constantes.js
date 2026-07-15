@@ -49,6 +49,11 @@ const TIPOS_COBRO = {
   SALIDA: 'salida'
 };
 
+const ESTADOS_CAJA = {
+  ABIERTA: 'abierta',
+  CERRADA: 'cerrada'
+};
+
 const METODOS_PAGO = ['efectivo', 'transferencia'];
 
 const LIMITES = {
@@ -83,6 +88,7 @@ module.exports = {
   ESTADOS_SUSCRIPCION,
   TIPOS_MOVIMIENTO,
   TIPOS_COBRO,
+  ESTADOS_CAJA,
   METODOS_PAGO,
   LIMITES,
   MENSAJES

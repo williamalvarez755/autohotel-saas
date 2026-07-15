@@ -17,6 +17,7 @@ USE autohotel_saas;
 -- desactiva temporalmente la verificación de llaves foráneas.
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS cobros;
+DROP TABLE IF EXISTS turnos_caja;
 DROP TABLE IF EXISTS pedidos;
 DROP TABLE IF EXISTS movimientos_inventario;
 DROP TABLE IF EXISTS reservas;
@@ -294,18 +295,52 @@ CREATE TABLE reservas (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------
+-- TURNOS DE CAJA (control del efectivo físico por turno)
+-- Un trabajador abre su caja con un fondo ("sencillo"), opera, y
+-- al cerrar declara el efectivo contado. El sistema calcula el
+-- efectivo esperado (fondo + cobros en efectivo del turno) y el
+-- descuadre (declarado - sistema).
+-- La columna hotel_abierta garantiza UNA sola caja abierta por
+-- hotel: vale hotel_id mientras la caja está abierta y NULL al
+-- cerrarse (los valores NULL no colisionan en un índice UNIQUE).
+-- ------------------------------------------------------------
+CREATE TABLE turnos_caja (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  hotel_id        INT UNSIGNED NOT NULL,
+  usuario_id      INT UNSIGNED NOT NULL,
+  monto_inicial   DECIMAL(10,2) NOT NULL DEFAULT 0,
+  fecha_apertura  DATETIME NOT NULL,
+  fecha_cierre    DATETIME NULL,
+  monto_sistema   DECIMAL(10,2) NULL,
+  monto_declarado DECIMAL(10,2) NULL,
+  descuadre       DECIMAL(10,2) NULL,
+  estado          ENUM('abierta','cerrada') NOT NULL DEFAULT 'abierta',
+  cerrado_por     INT UNSIGNED NULL,
+  hotel_abierta   INT UNSIGNED NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_turnos_una_abierta (hotel_abierta),
+  KEY idx_turnos_hotel (hotel_id, fecha_apertura),
+  CONSTRAINT fk_turnos_hotel FOREIGN KEY (hotel_id) REFERENCES hoteles (id),
+  CONSTRAINT fk_turnos_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id),
+  CONSTRAINT fk_turnos_cerrado_por FOREIGN KEY (cerrado_por) REFERENCES usuarios (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
 -- COBROS (libro de ingresos reales)
 -- Cada vez que entra dinero se registra aquí:
 --   tipo 'base'   = cobro adelantado al registrar la entrada
 --   tipo 'salida' = liquidación al finalizar (extras + pedidos)
 -- Los reportes e ingresos del día se calculan de esta tabla,
 -- por lo que siempre cuadran con el dinero cobrado.
+-- turno_id enlaza el cobro con la caja abierta en ese momento (si
+-- la había): así el cierre de caja suma solo lo cobrado en su turno.
 -- ------------------------------------------------------------
 CREATE TABLE cobros (
   id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
   hotel_id         INT UNSIGNED NOT NULL,
   estancia_id      INT UNSIGNED NOT NULL,
   habitacion_id    INT UNSIGNED NOT NULL,
+  turno_id         INT UNSIGNED NULL,
   tipo             ENUM('base','salida') NOT NULL,
   monto_habitacion DECIMAL(10,2) NOT NULL DEFAULT 0,
   monto_pedidos    DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -317,9 +352,11 @@ CREATE TABLE cobros (
   KEY idx_cobros_hotel_fecha (hotel_id, fecha),
   KEY idx_cobros_estancia (estancia_id),
   KEY idx_cobros_habitacion (habitacion_id),
+  KEY idx_cobros_turno (turno_id),
   CONSTRAINT fk_cobros_hotel FOREIGN KEY (hotel_id) REFERENCES hoteles (id),
   CONSTRAINT fk_cobros_estancia FOREIGN KEY (estancia_id) REFERENCES estancias (id),
   CONSTRAINT fk_cobros_habitacion FOREIGN KEY (habitacion_id) REFERENCES habitaciones (id),
+  CONSTRAINT fk_cobros_turno FOREIGN KEY (turno_id) REFERENCES turnos_caja (id) ON DELETE SET NULL,
   CONSTRAINT fk_cobros_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -41,6 +41,8 @@ const ICONOS = {
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   edificio: '<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M2 22h20"/><path d="M10 6h1"/><path d="M13 6h1"/><path d="M10 10h1"/><path d="M13 10h1"/><path d="M10 14h1"/><path d="M13 14h1"/><path d="M10 18h4"/>',
   llave: '<circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3"/>',
+  caja: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 8 6 4h12l3 4"/><path d="M9 13h6"/>',
+  peaton: '<circle cx="12" cy="4" r="1.4"/><path d="m10 21 1.5-6L9 13V9l3-1 3 3 2 1"/><path d="M11.5 15 9.5 21"/>',
   salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>'
 };
 

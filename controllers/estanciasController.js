@@ -42,7 +42,7 @@ async function pagarBase(req, res) {
   const id = v.idValido(req.params.id);
   const { metodo, efectivo } = validarPago(req.body || {}, true);
   if (!metodo) throw new ErrorNegocio('Debe indicar el método de pago');
-  const resultado = await estanciasService.pagarBase(req.hotelId, req.usuario.id, id, metodo, efectivo);
+  const resultado = await estanciasService.pagarBase(req.hotelId, req.usuario, id, metodo, efectivo);
   return ok(res, resultado, 'Cobro base registrado');
 }
 
@@ -66,7 +66,7 @@ async function preSalida(req, res) {
 async function finalizar(req, res) {
   const id = v.idValido(req.params.id);
   const { metodo, efectivo } = validarPago(req.body || {}, false);
-  const resultado = await estanciasService.finalizar(req.hotelId, req.usuario.id, id, metodo, efectivo);
+  const resultado = await estanciasService.finalizar(req.hotelId, req.usuario, id, metodo, efectivo);
   return ok(res, resultado, 'Estancia finalizada');
 }
 

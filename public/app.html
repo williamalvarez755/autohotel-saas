@@ -16,6 +16,10 @@
     </div>
     <select class="selector-hotel" id="selector-hotel" title="Hotel activo"></select>
     <div class="zona-derecha">
+      <button class="boton secundario chico oculto" id="boton-caja" title="Control de caja">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M3 8 6 4h12l3 4"/><path d="M9 13h6"/></svg>
+        <span id="etiqueta-caja">Caja</span>
+      </button>
       <button class="boton-campana oculto" id="boton-password" title="Cambiar mi contraseña">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3"/></svg>
       </button>
@@ -44,6 +48,7 @@
       <section id="seccion-reservas" class="oculto"></section>
       <section id="seccion-inventario" class="oculto"></section>
       <section id="seccion-reportes" class="oculto"></section>
+      <section id="seccion-caja" class="oculto"></section>
       <section id="seccion-usuarios" class="oculto"></section>
       <section id="seccion-habitaciones" class="oculto"></section>
     </main>
@@ -54,6 +59,7 @@
   <script src="/js/comun.js"></script>
   <script src="/js/operaciones.js"></script>
   <script src="/js/administracion.js"></script>
+  <script src="/js/caja.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

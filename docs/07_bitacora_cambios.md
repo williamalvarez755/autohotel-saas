@@ -4,6 +4,25 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-15 · v2.5 — Módulo de Control de Caja + selector vehículo/peatón
+
+**Suite e2e: 104 → 120 pruebas.** Ninguna función previa cambió su comportamiento (dueños y superadmin siguen igual).
+
+### Control de caja (turnos de efectivo físico)
+
+Los trabajadores gestionan el "sencillo" con apertura/cierre de caja por turno.
+
+- **BD**: nueva tabla `turnos_caja` (id, hotel_id, usuario_id, monto_inicial, fecha_apertura/cierre, monto_sistema, monto_declarado, descuadre, estado, cerrado_por) + columna `hotel_abierta` con índice **UNIQUE** que garantiza **una sola caja abierta por hotel** a nivel de motor. `cobros` gana `turno_id` (FK, `ON DELETE SET NULL`) para enlazar cada cobro con su turno. Migración `db/migracion_caja.sql` (aplicada en local; **Aiven pendiente**, ver nota).
+- **Relación**: se eligió `cobros.turno_id` (no timestamps) — robusto y multi-tenant. `monto_sistema = fondo + Σ(cobros efectivo del turno)`. La transferencia no cuenta para el efectivo.
+- **Backend** (`services/cajaService.js`, `controllers/cajaController.js`, rutas `/caja/*`): estado en vivo, abrir (revalida en transacción + índice UNIQUE), cerrar (arqueo y descuadre), historial (solo dueño). En `estanciasService` (`pagarBase`/`finalizar`) se agregó el bloqueo: **un cobro en efectivo de un TRABAJADOR exige caja abierta (409)**; el dueño está exento; cualquier cobro se enlaza a la caja abierta si existe. Se pasa `req.usuario` (id+rol) a ambos servicios.
+- **Frontend** (`public/js/caja.js`): al entrar sin caja, modal bloqueante que exige el fondo (solo limpieza queda disponible; `requiereCaja()` gatea entrada/salida/tablero). Botón "Caja: Q…" en la barra con el efectivo esperado en vivo; modal de turno y arqueo de cierre con vista previa del descuadre (faltante/cuadra/sobrante) que al confirmar cierra la sesión. Sección "Cajas" del dueño con el historial y el arqueo coloreado.
+
+### Selector "Con vehículo / A pie" en la entrada
+
+En el modal de entrada, un selector decide si se pide la placa: "Con vehículo" muestra el campo, "A pie" lo oculta y envía placa vacía (parejas que llegan caminando). Puramente de presentación sobre la placa ya opcional de v2.4.
+
+Archivos: `db/schema.sql`, `db/migracion_caja.sql` (nuevo), `config/constantes.js`, `services/{caja,estancias}Service.js`, `controllers/{caja,estancias}Controller.js`, `routes/index.js`, `public/app.html`, `public/js/{caja,app,operaciones,iconos}.js`, `test/e2e.js` (bloqueo+apertura en sección C y sección N completa, 16 pruebas nuevas). Verificado en navegador: modal bloqueante, apertura, cobro que sube el esperado, toggle vehículo/pie, arqueo con descuadre, cierre con logout e historial del dueño (Faltante Q20).
+
 ## 2026-07-14 · v2.4 — Contraseña propia (superadmin/dueños) + placa opcional
 
 **Suite e2e: 94 → 104 pruebas.**

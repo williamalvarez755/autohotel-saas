@@ -62,6 +62,8 @@ Errores: los servicios lanzan `ErrorNegocio(mensaje, status)` → `middleware/er
 | `utils/fechas.js` | Hora de Guatemala (GMT-6): ahora, sumas, épocas, horas extra (techo), validación de formatos. |
 | `utils/dinero.js` | Redondeo monetario a 2 decimales, multiplicación y suma seguras. |
 | `db/importar.js` | Importa schema+seed a la base configurada en `.env` (local o nube, con TLS); exige `--confirmar` porque es destructivo. |
+| `services/cajaService.js + controllers/cajaController.js` | Control de caja: abrir/cerrar turno, estado en vivo, historial. Enlaza cada cobro con la caja abierta y bloquea el efectivo del trabajador sin caja. |
+| `public/js/caja.js` | Frontend de caja: modal bloqueante de apertura (trabajador), botón/estado en la barra, arqueo de cierre y sección "Cajas" del dueño. |
 | `public/index.html + js/login.js` | Pantalla de login. |
 | `public/app.html + js/app.js` | Núcleo del panel operativo: sesión, navegación, tablero (con chips de tarifas), dashboard, alertas, polling y contadores. |
 | `public/js/operaciones.js` | Entrada con selector de tarifas, cobro, **POS con buscador instantáneo**, salida, limpieza y reservas (modales). |

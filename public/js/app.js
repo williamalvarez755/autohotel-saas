@@ -11,6 +11,7 @@ const App = {
   esDueno: false,
   seccion: null,
   tablero: [],
+  caja: null,             // caja abierta del trabajador (o null)
   deltaReloj: 0,          // diferencia reloj servidor - reloj navegador
   intervaloPolling: null,
   intervaloTicker: null,
@@ -63,8 +64,20 @@ function ahoraServidor() {
     botonPassword.addEventListener('click', modalCambiarPassword);
   }
 
+  // Control de caja: el trabajador ve el botón de caja en la barra.
+  const botonCaja = document.getElementById('boton-caja');
+  if (botonCaja && !App.esDueno) {
+    botonCaja.addEventListener('click', () => (App.caja ? modalCaja() : modalAbrirCaja()));
+  }
+
   mostrarSeccion(App.esDueno ? 'dashboard' : 'tablero');
   await refrescarAlertas();
+
+  // El trabajador que entra sin caja abierta debe abrirla para operar.
+  if (!App.esDueno) {
+    await cargarEstadoCaja();
+    if (!App.caja) modalAbrirCaja();
+  }
 
   App.intervaloPolling = setInterval(cicloPolling, INTERVALO_POLLING_MS);
   App.intervaloTicker = setInterval(actualizarContadores, 1000);
@@ -74,6 +87,7 @@ function ahoraServidor() {
 async function cicloPolling() {
   if (document.hidden) return;
   await refrescarAlertas();
+  if (!App.esDueno) await cargarEstadoCaja();
   if (App.seccion === 'tablero') await cargarTablero();
   if (App.seccion === 'dashboard') await cargarDashboard();
   if (App.seccion === 'estancias') await cargarEstancias();
@@ -115,6 +129,7 @@ const SECCIONES = [
   { id: 'reservas',     icono: 'calendario', texto: 'Reservas',     soloDueno: false, grupo: 'Operación' },
   { id: 'inventario',   icono: 'paquete',    texto: 'Inventario',   soloDueno: false, grupo: 'Gestión' },
   { id: 'reportes',     icono: 'grafica',    texto: 'Reportes',     soloDueno: true,  grupo: 'Gestión' },
+  { id: 'caja',         icono: 'caja',       texto: 'Cajas',        soloDueno: true,  grupo: 'Gestión' },
   { id: 'usuarios',     icono: 'usuarios',   texto: 'Usuarios',     soloDueno: true,  grupo: 'Gestión' },
   { id: 'habitaciones', icono: 'puerta',     texto: 'Habitaciones', soloDueno: true,  grupo: 'Gestión' }
 ];
@@ -164,6 +179,7 @@ const CARGADORES = {
   reservas: cargarReservas,
   inventario: cargarInventario,
   reportes: cargarReportes,
+  caja: cargarCajas,
   usuarios: cargarUsuarios,
   habitaciones: cargarHabitacionesAdmin
 };
@@ -314,9 +330,11 @@ function dibujarTablero() {
 
 /** Acción al tocar una tarjeta según su estado. */
 function accionHabitacion(habitacion) {
+  // La limpieza siempre está disponible; el resto exige caja abierta.
+  if (habitacion.estado === 'limpieza') return modalLimpieza(habitacion);
+  if (!requiereCaja()) return;
   if (habitacion.estado === 'disponible') return modalEntrada(habitacion, null);
   if (habitacion.estado === 'ocupada') return modalEstancia(habitacion);
-  if (habitacion.estado === 'limpieza') return modalLimpieza(habitacion);
   if (habitacion.estado === 'reservada') return modalReservaHabitacion(habitacion);
 }
 

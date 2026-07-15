@@ -19,6 +19,7 @@ const estanciasController = require('../controllers/estanciasController');
 const pedidosController = require('../controllers/pedidosController');
 const productosController = require('../controllers/productosController');
 const reservasController = require('../controllers/reservasController');
+const cajaController = require('../controllers/cajaController');
 const reportesController = require('../controllers/reportesController');
 const alertasController = require('../controllers/alertasController');
 const usuariosController = require('../controllers/usuariosController');
@@ -76,6 +77,14 @@ router.get('/productos/movimientos', soloDueno, e(productosController.movimiento
 router.get('/reservas', operacion, e(reservasController.listar));
 router.post('/reservas', operacion, e(reservasController.crear));
 router.post('/reservas/:id/cancelar', operacion, e(reservasController.cancelar));
+
+// ---------------- Control de caja ----------------
+// estado/abrir/cerrar los usan dueño y trabajador; el historial de
+// auditoría es solo del dueño.
+router.get('/caja/estado', operacion, e(cajaController.estado));
+router.post('/caja/abrir', operacion, e(cajaController.abrir));
+router.post('/caja/cerrar', operacion, e(cajaController.cerrar));
+router.get('/caja/historial', soloDueno, e(cajaController.historial));
 
 // ---------------- Alertas ----------------
 router.get('/alertas', operacion, e(alertasController.obtener));

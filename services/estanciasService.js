@@ -17,11 +17,28 @@ const {
   ESTADOS_ESTANCIA,
   ESTADOS_RESERVA,
   TIPOS_ESTANCIA,
-  TIPOS_COBRO
+  TIPOS_COBRO,
+  ROLES
 } = require('../config/constantes');
 const { ErrorNegocio } = require('../middleware/errores');
 const { ahoraGT, sumarHoras, aEpoch, horasExtra } = require('../utils/fechas');
 const { redondear, sumar, multiplicar } = require('../utils/dinero');
+const cajaService = require('./cajaService');
+
+/**
+ * Resuelve la caja abierta a la que se enlazará un cobro. Si el
+ * cobro es en EFECTIVO y lo hace un TRABAJADOR, exige que exista una
+ * caja abierta (control de turno); el dueño no está obligado. Si hay
+ * una caja abierta, cualquier cobro (de cualquiera) se enlaza a ella
+ * para que el arqueo del turno cuadre.
+ */
+async function resolverTurnoParaCobro(cx, hotelId, usuario, metodo) {
+  const turnoId = await cajaService.turnoAbiertoId(cx, hotelId);
+  if (metodo === 'efectivo' && usuario.rol === ROLES.TRABAJADOR && !turnoId) {
+    throw new ErrorNegocio('No hay una caja abierta: abra su caja para poder cobrar en efectivo', 409);
+  }
+  return turnoId;
+}
 
 /**
  * Registra la entrada de un cliente.
@@ -149,7 +166,7 @@ async function registrarEntrada(hotel, usuarioId, datos) {
  * El total lo dicta la BD (total_base); si es efectivo se calcula
  * el cambio validando que lo recibido alcance.
  */
-async function pagarBase(hotelId, usuarioId, estanciaId, metodo, efectivoRecibido) {
+async function pagarBase(hotelId, usuario, estanciaId, metodo, efectivoRecibido) {
   return conTransaccion(async (cx) => {
     const [estancias] = await cx.query(
       `SELECT * FROM estancias WHERE id = ? AND hotel_id = ? AND estado = 'activa' LIMIT 1 FOR UPDATE`,
@@ -169,14 +186,18 @@ async function pagarBase(hotelId, usuarioId, estanciaId, metodo, efectivoRecibid
       cambio = redondear(efectivoRecibido - total);
     }
 
+    // Control de caja: bloquea si un trabajador cobra efectivo sin
+    // caja abierta; enlaza el cobro a la caja del turno (si la hay).
+    const turnoId = await resolverTurnoParaCobro(cx, hotelId, usuario, metodo);
+
     await cx.query(
       'UPDATE estancias SET pagado_base = 1, metodo_pago = ? WHERE id = ?',
       [metodo, estanciaId]
     );
     await cx.query(
-      `INSERT INTO cobros (hotel_id, estancia_id, habitacion_id, tipo, monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-      [hotelId, estanciaId, estancia.habitacion_id, TIPOS_COBRO.BASE, total, total, metodo, ahoraGT(), usuarioId]
+      `INSERT INTO cobros (hotel_id, estancia_id, habitacion_id, turno_id, tipo, monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      [hotelId, estanciaId, estancia.habitacion_id, turnoId, TIPOS_COBRO.BASE, total, total, metodo, ahoraGT(), usuario.id]
     );
 
     return { estancia_id: estanciaId, total, metodo, cambio };
@@ -302,7 +323,7 @@ async function preSalida(hotelId, estanciaId) {
  * salida, cobra lo pendiente (base no pagada + horas extra +
  * pedidos), registra el cobro y pasa la habitación a LIMPIEZA.
  */
-async function finalizar(hotelId, usuarioId, estanciaId, metodo, efectivoRecibido) {
+async function finalizar(hotelId, usuario, estanciaId, metodo, efectivoRecibido) {
   return conTransaccion(async (cx) => {
     const estancia = await obtenerConHabitacion(cx, hotelId, estanciaId, true);
     if (estancia.estado !== ESTADOS_ESTANCIA.ACTIVA) {
@@ -328,6 +349,12 @@ async function finalizar(hotelId, usuarioId, estanciaId, metodo, efectivoRecibid
       }
     }
 
+    // Control de caja: si hay liquidación en efectivo, exige caja
+    // abierta al trabajador y enlaza el cobro a la caja del turno.
+    const turnoId = d.total_pendiente > 0
+      ? await resolverTurnoParaCobro(cx, hotelId, usuario, metodo)
+      : null;
+
     await cx.query(
       `UPDATE estancias
           SET hora_salida_real = ?, horas_extra = ?, total_extra = ?,
@@ -349,12 +376,12 @@ async function finalizar(hotelId, usuarioId, estanciaId, metodo, efectivoRecibid
 
     if (d.total_pendiente > 0) {
       await cx.query(
-        `INSERT INTO cobros (hotel_id, estancia_id, habitacion_id, tipo, monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO cobros (hotel_id, estancia_id, habitacion_id, turno_id, tipo, monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          hotelId, estanciaId, estancia.habitacion_id, TIPOS_COBRO.SALIDA,
+          hotelId, estanciaId, estancia.habitacion_id, turnoId, TIPOS_COBRO.SALIDA,
           sumar(d.pendiente_base, d.total_extra), d.total_pedidos, d.total_pendiente,
-          metodo, horaSalidaReal, usuarioId
+          metodo, horaSalidaReal, usuario.id
         ]
       );
     }

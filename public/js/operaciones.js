@@ -10,6 +10,7 @@
 // habitación); el precio y la duración los dicta la tarifa.
 // ============================================================
 function modalEntrada(habitacion, reserva) {
+  if (!requiereCaja()) return; // el trabajador necesita caja abierta para cobrar
   const tarifas = habitacion.tarifas || [];
   if (!tarifas.length && Number(habitacion.precio_noche) <= 0) {
     return aviso('Esta habitación no tiene tarifas configuradas: el dueño debe definirlas en Habitaciones', true);
@@ -25,8 +26,13 @@ function modalEntrada(habitacion, reserva) {
   abrirModal({
     titulo: `Registrar entrada · ${escapar(habitacion.nombre)}`,
     cuerpo: `
-      <div class="campo"><label>Placa del vehículo (opcional)</label>
-        <input id="me-placa" maxlength="20" autocapitalize="characters" placeholder="P-123ABC · déjelo vacío si llegan a pie"
+      <div class="campo"><label>¿Cómo ingresa el cliente?</label>
+        <div class="grupo-opciones" id="me-ingreso">
+          <button type="button" class="opcion activa" data-valor="vehiculo">${icono('carro', 15)} Con vehículo</button>
+          <button type="button" class="opcion" data-valor="pie">${icono('peaton', 15)} A pie</button>
+        </div></div>
+      <div class="campo" id="me-campo-placa"><label>Placa del vehículo</label>
+        <input id="me-placa" maxlength="20" autocapitalize="characters" placeholder="P-123ABC"
                value="${reserva && reserva.placa ? escapar(reserva.placa) : ''}"></div>
       <div class="campo"><label>Tarifa</label>
         <div class="grupo-opciones tarifas" id="me-tipo">
@@ -68,12 +74,18 @@ function modalEntrada(habitacion, reserva) {
   activarGrupoOpciones(document.getElementById('me-tipo'), actualizarTotal);
   actualizarTotal();
 
+  // Con vehículo / a pie: solo muestra la placa cuando llegan en carro.
+  activarGrupoOpciones(document.getElementById('me-ingreso'), (modo) => {
+    document.getElementById('me-campo-placa').classList.toggle('oculto', modo === 'pie');
+  });
+
   document.getElementById('me-cancelar').addEventListener('click', cerrarModal);
   document.getElementById('me-registrar').addEventListener('click', async () => {
     const valor = opcionActiva(document.getElementById('me-tipo'));
+    const aPie = opcionActiva(document.getElementById('me-ingreso')) === 'pie';
     const cuerpo = {
       habitacion_id: habitacion.id,
-      placa: valorModal('#me-placa').toUpperCase(),
+      placa: aPie ? '' : valorModal('#me-placa').toUpperCase(),
       tipo: valor === 'noche' ? 'noche' : 'horas'
     };
     if (valor !== 'noche') cuerpo.tarifa_id = Number(valor.replace('tarifa-', ''));
@@ -376,6 +388,7 @@ async function modalPedidos(estancia) {
 // SALIDA
 // ============================================================
 async function modalSalida(estanciaId) {
+  if (!requiereCaja()) return; // liquidar en efectivo exige caja abierta
   const respuesta = await api(`/estancias/${estanciaId}/pre-salida`);
   if (!respuesta.success) return avisoRespuesta(respuesta);
   const d = respuesta.data;
@@ -733,6 +746,7 @@ function modalCrearReserva(habitacionesDisponibles) {
 // ============================================================
 async function refrescarVistaOperativa() {
   refrescarAlertas();
+  if (!App.esDueno) await cargarEstadoCaja(); // el efectivo esperado cambió
   if (App.seccion === 'tablero') await cargarTablero();
   else if (App.seccion === 'estancias') await cargarEstancias();
   else if (App.seccion === 'limpieza') await cargarLimpieza();

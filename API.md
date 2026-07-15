@@ -77,6 +77,7 @@ Reglas: habitación disponible (o reservada solo con su `reserva_id`). `placa` e
 → `data`: estancia con totales para la pantalla de cobro.
 
 ### POST /estancias/:id/pago-base — [D][T] — cobro adelantado
+> Control de caja: un **cobro en efectivo hecho por un trabajador** exige que exista una caja **abierta** en su hotel; si no la hay → **409**. El cobro se enlaza a la caja abierta (si existe). El dueño está exento. La transferencia nunca se bloquea.
 ```json
 { "metodo": "efectivo", "efectivo_recibido": 200 }
 { "metodo": "transferencia" }
@@ -139,6 +140,17 @@ Solo habitaciones disponibles; fecha futura. Habitación → RESERVADA. `cargo_e
 Para convertirla en entrada: `POST /estancias` con `reserva_id`.
 
 ---
+
+## Control de caja (turnos de efectivo)
+
+Un trabajador abre su caja con un fondo inicial, opera y al cerrar declara el efectivo contado. El sistema calcula el efectivo esperado (fondo + cobros en efectivo enlazados al turno) y el descuadre. Solo puede haber **una caja abierta por hotel** (garantía en BD).
+
+### GET /caja/estado — [D][T] — `{ abierta: {...} | null }`
+La caja abierta del hotel con su `efectivo_cobrado` y `efectivo_esperado` calculados en vivo, o `null`.
+### POST /caja/abrir — [D][T] — `{ monto_inicial }` — abre la caja (falla si ya hay una abierta).
+### POST /caja/cerrar — [D][T] — `{ monto_declarado }`
+Cierra la caja abierta: calcula `monto_sistema` (fondo + efectivo del turno) y `descuadre` (`declarado - sistema`: + sobrante / − faltante).
+### GET /caja/historial — [D] — turnos del hotel (para auditar descuadres); las cajas abiertas muestran su esperado en vivo.
 
 ## Alertas
 

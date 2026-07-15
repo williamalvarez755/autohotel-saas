@@ -107,6 +107,16 @@ async function principal() {
     entrada.data.tarifa_nombre === '3 horas' && Boolean(entrada.data.hora_salida_prevista));
   const estanciaId = entrada.data.id;
 
+  // --- Control de caja: sin caja abierta el trabajador no cobra efectivo ---
+  const cajaSinAbrir = await llamar('pedro', 'GET', '/caja/estado');
+  probar('El trabajador arranca sin caja abierta', cajaSinAbrir.success && cajaSinAbrir.data.abierta === null);
+  const cobroSinCaja = await llamar('pedro', 'POST', `/estancias/${estanciaId}/pago-base`, { metodo: 'efectivo', efectivo_recibido: 200 });
+  probar('BLOQUEO: cobro en efectivo sin caja abierta se rechaza (409)', cobroSinCaja.status === 409);
+  const abreCaja = await llamar('pedro', 'POST', '/caja/abrir', { monto_inicial: 300 });
+  probar('El trabajador abre su caja con fondo Q300', abreCaja.success && Number(abreCaja.data.monto_inicial) === 300);
+  const dobleCaja = await llamar('pedro', 'POST', '/caja/abrir', { monto_inicial: 50 });
+  probar('Solo una caja abierta por hotel (segunda apertura → error)', !dobleCaja.success);
+
   const sinTarifa = await llamar('pedro', 'POST', '/estancias', { habitacion_id: 4, placa: 'e2e-x', tipo: 'horas' });
   probar('Entrada por horas SIN tarifa se rechaza (400)', !sinTarifa.success && sinTarifa.status === 400);
   const tarifaAjena = await llamar('pedro', 'POST', '/estancias', { habitacion_id: 4, placa: 'e2e-x', tipo: 'horas', tarifa_id: tarifa3h.id });
@@ -497,6 +507,53 @@ async function principal() {
   });
   probar('La estancia sin placa se liquida y finaliza normal', salidaSinPlaca.success);
   await llamar('carlos', 'POST', `/habitaciones/${libreM.id}/limpia`);
+
+  console.log('\n=== N. Control de caja: arqueo, cierre e historial ===');
+  // La caja de pedro (hotel 1) sigue abierta desde la sección C.
+  const estadoN = await llamar('pedro', 'GET', '/caja/estado');
+  probar('Hay una caja abierta con su efectivo esperado', estadoN.success && estadoN.data.abierta !== null);
+  const turnoId = estadoN.data.abierta.id;
+  const esperado = Number(estadoN.data.abierta.efectivo_esperado);
+  const [sumEfectivo] = await bd.query(
+    "SELECT COALESCE(SUM(monto_total), 0) AS s FROM cobros WHERE turno_id = ? AND metodo = 'efectivo'",
+    [turnoId]
+  );
+  probar('Efectivo esperado = fondo (Q300) + cobros en efectivo del turno',
+    esperado === Math.round((300 + Number(sumEfectivo[0].s)) * 100) / 100);
+
+  const [transfTurno] = await bd.query(
+    "SELECT COUNT(*) AS n FROM cobros WHERE turno_id = ? AND metodo = 'transferencia'",
+    [turnoId]
+  );
+  probar('Los cobros por transferencia NO cuentan para el efectivo de caja', true, `(transferencias enlazadas: ${transfTurno[0].n})`);
+
+  const cierre = await llamar('pedro', 'POST', '/caja/cerrar', { monto_declarado: esperado + 40 });
+  probar('Cierre: descuadre = declarado - sistema (sobrante Q40)',
+    cierre.success && Number(cierre.data.monto_sistema) === esperado && Number(cierre.data.descuadre) === 40);
+  const estadoTrasCierre = await llamar('pedro', 'GET', '/caja/estado');
+  probar('Tras cerrar, el hotel queda sin caja abierta', estadoTrasCierre.data.abierta === null);
+
+  const histDueno = await llamar('carlos', 'GET', '/caja/historial');
+  probar('El dueño ve el historial con el turno cerrado y su descuadre',
+    histDueno.success && histDueno.data.some((c) => c.id === turnoId && c.estado === 'cerrada' && Number(c.descuadre) === 40));
+  const histTrabajador = await llamar('pedro', 'GET', '/caja/historial');
+  probar('El trabajador NO accede al historial de cajas (403)', histTrabajador.status === 403);
+
+  // Sin caja abierta: el trabajador vuelve a estar bloqueado; el dueño no.
+  tablero = await llamar('pedro', 'GET', '/habitaciones');
+  const libresN = tablero.data.habitaciones.filter((h) => h.estado === 'disponible' && h.tarifas.length);
+  probar('Hay habitaciones libres para las pruebas finales de caja', libresN.length >= 2);
+
+  const entradaN = await llamar('pedro', 'POST', '/estancias', { habitacion_id: libresN[0].id, tipo: 'horas', tarifa_id: libresN[0].tarifas[0].id });
+  probar('Registrar entrada NO requiere caja (aún no hay cobro)', entradaN.success);
+  const cobroBloqueado = await llamar('pedro', 'POST', `/estancias/${entradaN.data.id}/pago-base`, { metodo: 'efectivo', efectivo_recibido: 10000 });
+  probar('Sin caja el trabajador no cobra efectivo (409)', cobroBloqueado.status === 409);
+  const cobroTransfSinCaja = await llamar('pedro', 'POST', `/estancias/${entradaN.data.id}/pago-base`, { metodo: 'transferencia' });
+  probar('Sin caja el trabajador SÍ cobra por transferencia (no toca efectivo)', cobroTransfSinCaja.success);
+
+  const entradaDuenoN = await llamar('carlos', 'POST', '/estancias', { habitacion_id: libresN[1].id, tipo: 'horas', tarifa_id: libresN[1].tarifas[0].id });
+  const cobroDuenoSinCaja = await llamar('carlos', 'POST', `/estancias/${entradaDuenoN.data.id}/pago-base`, { metodo: 'efectivo', efectivo_recibido: 10000 });
+  probar('El dueño cobra en efectivo SIN caja (exento del control de turno)', cobroDuenoSinCaja.success);
 
   await bd.end();
 

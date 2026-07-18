@@ -63,6 +63,11 @@ Errores: los servicios lanzan `ErrorNegocio(mensaje, status)` → `middleware/er
 | `utils/dinero.js` | Redondeo monetario a 2 decimales, multiplicación y suma seguras. |
 | `db/importar.js` | Importa schema+seed a la base configurada en `.env` (local o nube, con TLS); exige `--confirmar` porque es destructivo. |
 | `services/cajaService.js + controllers/cajaController.js` | Control de caja: abrir/cerrar turno, estado en vivo, historial. Enlaza cada cobro con la caja abierta y bloquea el efectivo del trabajador sin caja. |
+| `services/auditoriaService.js` | Registro de auditoría (usuario, acción, detalle, IP, fecha). Nunca lanza: un fallo al auditar no rompe la operación. |
+| `services/consultasService.js + controllers/consultasController.js` | Consultas avanzadas (catálogo SQL fijo parametrizado) + limpieza de datos y políticas de retención. |
+| `services/limpiezaService.js` | Limpieza de históricos por tipo/fecha (resumen, respaldo, borrado transaccional) y ciclo de retención programado con respaldo automático. |
+| `public/js/reportes-tabla.js` | Tabla reutilizable: búsqueda en vivo, orden por columna, exportar CSV/Excel, PDF e imprimir. |
+| `public/js/superadmin-consultas.js + superadmin-limpieza.js` | Frontend de Consultas avanzadas, Limpieza de datos y Retención (panel del superadmin). |
 | `public/js/caja.js` | Frontend de caja: modal bloqueante de apertura (trabajador), botón/estado en la barra, arqueo de cierre y sección "Cajas" del dueño. |
 | `public/index.html + js/login.js` | Pantalla de login. |
 | `public/app.html + js/app.js` | Núcleo del panel operativo: sesión, navegación, tablero (con chips de tarifas), dashboard, alertas, polling y contadores. |

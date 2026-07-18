@@ -188,9 +188,11 @@ Reglas de rango: formato `AAAA-MM-DD`, `desde ≤ hasta`, máximo 366 días.
 ### GET /superadmin/duenos — [S]
 Cada dueño: datos, suscripción (`suscripcion_estado`, `fecha_vencimiento`), **`estado_calculado`** (`activa | por_vencer | vencida | suspendida`), hoteles y trabajadores activos.
 ### POST /superadmin/duenos — [S] — `{ nombre, usuario, password, fecha_vencimiento? }` (por defecto: hoy + 1 mes).
-### PUT /superadmin/duenos/:id — [S] — `{ nombre, password? }`
+### PUT /superadmin/duenos/:id — [S] — `{ nombre, password?, dpi, nit, telefono, correo, direccion, observaciones }`
+Edita la ficha completa del propietario. El correo, si viene, se valida de formato.
 ### DELETE /superadmin/duenos/:id — [S] — `{ confirmar_usuario }` (el usuario EXACTO del dueño)
 Elimina DEFINITIVAMENTE al dueño y toda su jerarquía (hoteles, trabajadores, habitaciones, tarifas, estancias, cobros, reservas, inventario, pagos, suscripción) en una transacción. Rechazado (400) sin confirmación correcta o si hay estancias activas sin liquidar. Pensado para cuentas morosas que quedaron como datos muertos.
+> `POST /superadmin/duenos` y `GET /superadmin/duenos` incluyen la ficha (DPI, NIT, teléfono, correo, dirección, observaciones, fecha de registro, último acceso, conteo de hoteles). Toda acción del superadmin queda en `auditoria` (usuario, IP, fecha).
 ### POST /superadmin/duenos/:id/suspender — [S] — bloquea al dueño y a TODOS sus trabajadores (también sesiones abiertas).
 ### POST /superadmin/duenos/:id/reactivar — [S] — quita la suspensión manual (si está vencida sigue bloqueada hasta pagar).
 ### POST /superadmin/duenos/:id/pagos — [S]
@@ -200,8 +202,23 @@ Elimina DEFINITIVAMENTE al dueño y toda su jerarquía (hoteles, trabajadores, h
 Guarda el pago, extiende el vencimiento **un mes** desde `max(hoy, vencimiento actual)` y reactiva la cuenta. → `{ pago_id, nueva_fecha_vencimiento }`.
 ### GET /superadmin/duenos/:id/pagos — [S] — historial de pagos del dueño.
 ### POST /superadmin/hoteles — [S] — `{ dueno_id, nombre, direccion, minutos_alerta_limpieza?, horas_noche? }`
-### PUT /superadmin/hoteles/:id — [S] — mismos campos + `activo`.
+### PUT /superadmin/hoteles/:id — [S] — mismos campos + `activo` (desactivación lógica).
 No se puede desactivar un hotel con estancias activas (quedaría dinero sin liquidar): 400 con el conteo de estancias abiertas.
+### DELETE /superadmin/hoteles/:id — [S]
+Elimina FÍSICAMENTE un hotel solo si NO tiene procesos críticos (estancias activas / habitaciones ocupadas, reservas pendientes, caja abierta, trabajadores asignados) ni historial (estancias, cobros, reservas, pedidos, movimientos, turnos). Si hay historial, se rechaza y se usa la desactivación lógica. No afecta a los demás hoteles del dueño.
+
+## Consultas avanzadas y mantenimiento (solo superadmin)
+
+### GET /superadmin/consultas/hoteles — [S] — hoteles (id, nombre, dueño) para el filtro.
+### GET /superadmin/consultas/:tipo — [S] — catálogo parametrizado (SQL fijo, nunca del cliente).
+Tipos: `clientes` (por placa), `reservas`, `ventas_dia|ventas_mes|ventas_anio|ventas_metodo`, `habitaciones`, `inventario_bajo|inventario_top|inventario_sin_movimiento`, `usuarios`, `auditoria`. Filtros por query: `desde`, `hasta`, `hotel_id`, `estado`, `busqueda`. Límite 1000 filas.
+### GET /superadmin/limpieza/resumen?fecha=YYYY-MM-DD — [S] — conteo por tipo de lo que se eliminaría.
+### GET /superadmin/limpieza/respaldo?fecha=&tipos=a,b — [S] — descarga JSON (respaldo previo).
+### POST /superadmin/limpieza/ejecutar — [S] — `{ fecha, tipos:[...], confirmacion:'ELIMINAR' }`
+Borra en transacción los registros anteriores a `fecha` de los tipos elegidos (estancias+pedidos+cobros, reservas, movimientos, turnos_caja, auditoria, sesiones). Exige `confirmacion:'ELIMINAR'`. Queda auditado (usuario, IP, fecha, tipos, cantidades).
+### GET /superadmin/retencion — [S] — políticas (meses a conservar + frecuencia).
+### PUT /superadmin/retencion — [S] — `{ tipo, meses, programada:'manual'|'mensual'|'trimestral'|'anual' }`
+El servidor ejecuta las políticas no manuales periódicamente, con respaldo automático a `respaldos/` antes de borrar.
 
 ---
 

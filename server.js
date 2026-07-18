@@ -114,6 +114,23 @@ app.use((req, res) => res.redirect('/'));
 // Manejador final de errores (después de todo)
 app.use(manejadorErrores);
 
+// ---------------- Limpieza programada (políticas de retención) ----------------
+// Revisa cada 6 horas si alguna política programada (mensual /
+// trimestral / anual) ya cumplió su frecuencia y la ejecuta con
+// respaldo previo. Los errores se registran sin tumbar el proceso.
+const limpiezaService = require('./services/limpiezaService');
+const SEIS_HORAS_MS = 6 * 60 * 60 * 1000;
+
+function programarLimpieza() {
+  const correr = () => {
+    limpiezaService.cicloProgramado().catch((error) => {
+      console.error('Limpieza programada: error en el ciclo:', error.message);
+    });
+  };
+  setTimeout(correr, 60 * 1000); // primer chequeo al minuto de arrancar
+  setInterval(correr, SEIS_HORAS_MS);
+}
+
 // ---------------- Arranque ----------------
 async function iniciar() {
   try {
@@ -121,6 +138,7 @@ async function iniciar() {
     app.listen(config.puerto, () => {
       console.log(`AutoHotel SaaS escuchando en http://localhost:${config.puerto}`);
     });
+    programarLimpieza();
   } catch (error) {
     console.error('No se pudo conectar a la base de datos:', error.message);
     console.error('Verifique la configuración del archivo .env y que MySQL esté corriendo.');

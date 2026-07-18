@@ -20,28 +20,31 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3"/></svg>
       </button>
       <button class="boton-campana" id="boton-tema" title="Cambiar tema"></button>
+      <div class="avatar" id="avatar-usuario"></div>
       <div class="usuario-mini">
         <div class="nombre" id="nombre-usuario">—</div>
-        <div class="rol">superadmin</div>
+        <div class="rol">Superadmin</div>
       </div>
       <button class="boton secundario chico" id="boton-salir">Salir</button>
     </div>
   </header>
 
-  <main class="contenido" style="max-width:1100px">
-    <div class="encabezado-seccion">
-      <div>
-        <h2>Dueños y suscripciones</h2>
-        <div class="sub">Gestione cuentas, hoteles y pagos de mensualidad</div>
-      </div>
-      <button class="boton" id="boton-nuevo-dueno"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg> Nuevo dueño</button>
-    </div>
+  <div class="distribucion">
+    <nav class="navegacion" id="navegacion"></nav>
 
-    <div id="lista-duenos"></div>
-  </main>
+    <main class="contenido">
+      <section id="seccion-propietarios" class="oculto"></section>
+      <section id="seccion-consultas" class="oculto"></section>
+      <section id="seccion-limpieza" class="oculto"></section>
+      <section id="seccion-retencion" class="oculto"></section>
+    </main>
+  </div>
 
   <script src="/js/api.js"></script>
   <script src="/js/comun.js"></script>
+  <script src="/js/reportes-tabla.js"></script>
+  <script src="/js/superadmin-consultas.js"></script>
+  <script src="/js/superadmin-limpieza.js"></script>
   <script src="/js/superadmin.js"></script>
 </body>
 </html>

@@ -555,6 +555,138 @@ async function principal() {
   const cobroDuenoSinCaja = await llamar('carlos', 'POST', `/estancias/${entradaDuenoN.data.id}/pago-base`, { metodo: 'efectivo', efectivo_recibido: 10000 });
   probar('El dueño cobra en efectivo SIN caja (exento del control de turno)', cobroDuenoSinCaja.success);
 
+  console.log('\n=== Ñ. Super Admin: propietarios (ficha), hoteles, consultas, limpieza, retención ===');
+
+  // --- Ficha completa del propietario ---
+  const propNuevo = await llamar('admin', 'POST', '/superadmin/duenos', {
+    nombre: 'Propietario Ficha', usuario: 'prop.ficha', password: 'ficha123',
+    dpi: '1234 56789 0101', nit: '999999-9', telefono: '5555-1234',
+    correo: 'prop@correo.com', direccion: 'Zona 1', observaciones: 'Cliente VIP'
+  });
+  probar('Crear propietario con ficha completa', propNuevo.success);
+  const correoInvalido = await llamar('admin', 'POST', '/superadmin/duenos', {
+    nombre: 'X', usuario: 'prop.mal', password: 'ficha123', correo: 'no-es-correo'
+  });
+  probar('Correo con formato inválido es rechazado (400)', correoInvalido.status === 400);
+
+  let listaProp = await llamar('admin', 'GET', '/superadmin/duenos');
+  const fichaGuardada = listaProp.data.find((d) => d.usuario === 'prop.ficha');
+  probar('La ficha se guarda y se lee (DPI, NIT, teléfono, correo)',
+    fichaGuardada && fichaGuardada.dpi === '1234 56789 0101' && fichaGuardada.nit === '999999-9'
+    && fichaGuardada.telefono === '5555-1234' && fichaGuardada.correo === 'prop@correo.com');
+  probar('El listado incluye fecha de registro y conteo de hoteles',
+    Boolean(fichaGuardada.creado_en) && Array.isArray(fichaGuardada.hoteles));
+
+  const editarFicha = await llamar('admin', 'PUT', `/superadmin/duenos/${propNuevo.data.id}`, {
+    nombre: 'Propietario Ficha', dpi: '1234 56789 0101', nit: '111111-1',
+    telefono: '5555-9999', correo: 'nuevo@correo.com', direccion: 'Zona 9', observaciones: 'Actualizado'
+  });
+  probar('Editar ficha del propietario', editarFicha.success);
+  listaProp = await llamar('admin', 'GET', '/superadmin/duenos');
+  const fichaEditada = listaProp.data.find((d) => d.id === propNuevo.data.id);
+  probar('La edición de ficha persiste (NIT y teléfono nuevos)',
+    fichaEditada.nit === '111111-1' && fichaEditada.telefono === '5555-9999' && fichaEditada.correo === 'nuevo@correo.com');
+
+  // --- Administración de hoteles: eliminar / desactivar ---
+  const hotelLimpio = await llamar('admin', 'POST', '/superadmin/hoteles', {
+    dueno_id: propNuevo.data.id, nombre: 'Hotel Sin Historial', direccion: 'Prueba'
+  });
+  const eliminarLimpio = await llamar('admin', 'DELETE', `/superadmin/hoteles/${hotelLimpio.data.id}`);
+  probar('Eliminar hotel SIN historial funciona', eliminarLimpio.success);
+
+  // Hotel 1 (El Paraíso) tiene historial e incluso estancias activas → no se elimina
+  const eliminarConHistorial = await llamar('admin', 'DELETE', '/superadmin/hoteles/1');
+  probar('Eliminar hotel CON historial/actividad se bloquea', !eliminarConHistorial.success);
+  const desactivarHotel = await llamar('admin', 'PUT', '/superadmin/hoteles/2', {
+    nombre: 'AutoHotel Luna Azul', direccion: 'Zona 12, Ciudad de Guatemala',
+    minutos_alerta_limpieza: 30, horas_noche: 12, activo: 0
+  });
+  probar('Desactivación lógica del hotel (sin borrar) funciona', desactivarHotel.success);
+  // Reactivar para no dejar el seed alterado para otras vueltas
+  await llamar('admin', 'PUT', '/superadmin/hoteles/2', {
+    nombre: 'AutoHotel Luna Azul', direccion: 'Zona 12, Ciudad de Guatemala',
+    minutos_alerta_limpieza: 30, horas_noche: 12, activo: 1
+  });
+
+  // --- Consultas avanzadas ---
+  const hoy2 = new Date().toISOString().slice(0, 10);
+  const cVentas = await llamar('admin', 'GET', `/superadmin/consultas/ventas_dia?desde=2020-01-01&hasta=${hoy2}`);
+  probar('Consulta ventas por día devuelve filas', cVentas.success && Array.isArray(cVentas.data.filas) && cVentas.data.filas.length > 0);
+  const cReservas = await llamar('admin', 'GET', '/superadmin/consultas/reservas?estado=usada');
+  probar('Consulta de reservas (usadas) responde', cReservas.success && Array.isArray(cReservas.data.filas));
+  const cHabDisp = await llamar('admin', 'GET', '/superadmin/consultas/habitaciones?estado=disponible');
+  probar('Consulta de habitaciones disponibles responde con filas', cHabDisp.success && cHabDisp.data.filas.length > 0);
+  const cUsuarios = await llamar('admin', 'GET', '/superadmin/consultas/usuarios?estado=activos');
+  probar('Consulta de usuarios activos excluye al superadmin', cUsuarios.success && cUsuarios.data.filas.every((u) => u.rol !== 'superadmin'));
+  const cInvBajo = await llamar('admin', 'GET', '/superadmin/consultas/inventario_bajo');
+  probar('Consulta de inventario bajo stock responde', cInvBajo.success && Array.isArray(cInvBajo.data.filas));
+  const cAuditoria = await llamar('admin', 'GET', '/superadmin/consultas/auditoria');
+  probar('Consulta de auditoría muestra las acciones ya registradas', cAuditoria.success && cAuditoria.data.filas.length > 0);
+  const cDesconocida = await llamar('admin', 'GET', '/superadmin/consultas/inventar_algo');
+  probar('Consulta desconocida es rechazada (400)', cDesconocida.status === 400);
+  const cHoteles = await llamar('admin', 'GET', '/superadmin/consultas/hoteles');
+  probar('Lista de hoteles para el filtro responde', cHoteles.success && cHoteles.data.length > 0);
+
+  // Seguridad: dueño/trabajador no acceden a las consultas
+  const consultaProhibida = await llamar('carlos', 'GET', '/superadmin/consultas/ventas_dia');
+  probar('Un dueño NO accede a las consultas del superadmin (403)', consultaProhibida.status === 403);
+
+  // --- Auditoría: verificar que las acciones quedan con usuario e IP ---
+  const [audRows] = await bd.query(
+    "SELECT accion, usuario_nombre, ip FROM auditoria WHERE accion = 'dueno.crear' ORDER BY id DESC LIMIT 1");
+  probar('La auditoría registra usuario, acción e IP',
+    audRows.length && audRows[0].usuario_nombre === 'Administrador del Sistema' && audRows[0].accion === 'dueno.crear');
+
+  // --- Limpieza de datos ---
+  const resumenLimp = await llamar('admin', 'GET', `/superadmin/limpieza/resumen?fecha=${hoy2}`);
+  probar('Resumen de limpieza lista tipos con conteos',
+    resumenLimp.success && Array.isArray(resumenLimp.data.tipos) && resumenLimp.data.tipos.some((t) => t.tipo === 'auditoria'));
+
+  const limpSinConfirmar = await llamar('admin', 'POST', '/superadmin/limpieza/ejecutar', {
+    fecha: '2000-01-01', tipos: ['auditoria'], confirmacion: 'no'
+  });
+  probar('Limpieza sin confirmación "ELIMINAR" se rechaza (400)', limpSinConfirmar.status === 400);
+  const limpTipoInvalido = await llamar('admin', 'POST', '/superadmin/limpieza/ejecutar', {
+    fecha: '2000-01-01', tipos: ['inexistente'], confirmacion: 'ELIMINAR'
+  });
+  probar('Limpieza con tipo inválido se rechaza (400)', limpTipoInvalido.status === 400);
+
+  // Ejecutar limpieza real de sesiones expiradas (no toca datos de negocio)
+  const limpSesiones = await llamar('admin', 'POST', '/superadmin/limpieza/ejecutar', {
+    fecha: hoy2, tipos: ['sesiones'], confirmacion: 'ELIMINAR'
+  });
+  probar('Ejecutar limpieza de sesiones expiradas responde con total',
+    limpSesiones.success && typeof limpSesiones.data.total_eliminados === 'number');
+  const [audLimp] = await bd.query("SELECT COUNT(*) n FROM auditoria WHERE accion = 'limpieza.ejecutar'");
+  probar('La limpieza queda registrada en la auditoría', audLimp[0].n > 0);
+
+  // Seguridad: dueño no puede ejecutar limpieza
+  const limpProhibida = await llamar('carlos', 'POST', '/superadmin/limpieza/ejecutar', {
+    fecha: hoy2, tipos: ['sesiones'], confirmacion: 'ELIMINAR'
+  });
+  probar('Un dueño NO puede ejecutar limpieza (403)', limpProhibida.status === 403);
+
+  // --- Políticas de retención ---
+  const politicas = await llamar('admin', 'GET', '/superadmin/retencion');
+  probar('Listado de políticas de retención con valores por defecto',
+    politicas.success && politicas.data.length >= 6 && politicas.data.every((p) => typeof p.meses === 'number'));
+  const editarPolitica = await llamar('admin', 'PUT', '/superadmin/retencion', {
+    tipo: 'reservas', meses: 24, programada: 'trimestral'
+  });
+  probar('Editar política de retención (reservas: 24 meses, trimestral)', editarPolitica.success);
+  const politicas2 = await llamar('admin', 'GET', '/superadmin/retencion');
+  const polReservas = politicas2.data.find((p) => p.tipo === 'reservas');
+  probar('La política editada persiste', polReservas.meses === 24 && polReservas.programada === 'trimestral');
+  const polProhibida = await llamar('carlos', 'GET', '/superadmin/retencion');
+  probar('Un dueño NO accede a las políticas de retención (403)', polProhibida.status === 403);
+
+  // --- Último acceso (auditoría de accesos) ---
+  const [accesoRows] = await bd.query("SELECT ultimo_acceso FROM usuarios WHERE usuario = 'admin'");
+  probar('El login registra el último acceso del usuario', accesoRows[0].ultimo_acceso !== null);
+
+  // Limpieza del propietario de prueba creado en esta sección
+  await llamar('admin', 'DELETE', `/superadmin/duenos/${propNuevo.data.id}`, { confirmar_usuario: 'prop.ficha' });
+
   await bd.end();
 
   console.log('\n============================================');

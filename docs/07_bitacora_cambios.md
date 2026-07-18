@@ -4,6 +4,32 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-17 · v2.6 — Ampliación del panel Super Admin
+
+**Suite e2e: 120 → 150 pruebas.** Cero cambios de comportamiento en lo anterior. El panel del superadmin pasó de una sola vista a un panel multi-módulo (nav lateral igual que el operativo).
+
+Adaptaciones honestas al dominio real (documentadas): el sistema **no guarda identidad de huéspedes** (privacidad del autohotel) — el "cliente" se identifica por **placa**, así que las consultas de cliente buscan por placa. "Facturas/consumos" = tablas `cobros`/`pedidos`. No existe estado "mantenimiento" de habitación; se ofrecen los estados reales (disponible/ocupada/limpieza/reservada).
+
+### 1) Propietarios (ficha completa)
+`usuarios` gana DPI, NIT, teléfono, correo, dirección, observaciones y `ultimo_acceso` (migración `db/migracion_superadmin.sql`). Crear/editar propietario con toda la ficha (correo validado), vista "Ver" de solo lectura, búsqueda en vivo por nombre/usuario/correo/teléfono/DPI/NIT, conteo de hoteles. El login guarda `ultimo_acceso`.
+
+### 2) Administración de hoteles
+`DELETE /superadmin/hoteles/:id`: elimina físicamente **solo** si no hay procesos críticos (estancias activas/ocupadas, reservas pendientes, caja abierta, trabajadores) ni historial; si hay historial se rechaza y la UI ofrece la **desactivación lógica**. No afecta a los demás hoteles del dueño. Confirmación por texto "ELIMINAR".
+
+### 3) Consultas avanzadas
+`services/consultasService.js`: catálogo de 12 consultas **parametrizadas** (SQL fijo, jamás del cliente) — clientes, reservas, ventas (día/mes/año/método), habitaciones, inventario (bajo/top/sin movimiento), usuarios, auditoría. Filtros dinámicos (fechas, hotel, estado, búsqueda). Tabla reutilizable `reportes-tabla.js` con búsqueda en vivo, orden por columna y exportación **Excel (CSV UTF-8), PDF e Imprimir** (vía diálogo del navegador; sin librerías por la CSP `script-src 'self'`).
+
+### 4) Limpieza de datos históricos
+`services/limpiezaService.js`: por tipo (estancias+pedidos+cobros, reservas, movimientos, turnos de caja, auditoría, sesiones) anteriores a una fecha. Flujo seguro: **resumen** (conteos) → **respaldo** descargable (JSON) → **doble confirmación** (checkbox + escribir ELIMINAR) → borrado transaccional → **auditoría**.
+
+### 5) Políticas de retención
+Tabla `politicas_retencion` (meses + frecuencia). El servidor corre un ciclo cada 6 h que ejecuta las políticas no manuales (mensual/trimestral/anual) con **respaldo automático** a `respaldos/` antes de borrar.
+
+### 6) Seguridad y auditoría
+Todo bajo `soloSuperadmin`. Nuevo `services/auditoriaService.js`: cada acción administrativa (crear/editar/eliminar/suspender dueño, pagos, hoteles, limpieza, retención) registra usuario, acción, detalle, **IP** y fecha. La auditoría es consultable desde Consultas.
+
+Archivos: `db/schema.sql`, `db/migracion_superadmin.sql` (nuevo, aplicado en local y Aiven), `db/seed.sql` (ficha de dueños), `config/constantes.js` no; `services/{auditoria,consultas,limpieza}Service.js` (nuevos), `services/{superadmin,auth}Service.js`, `controllers/{superadmin,consultas}Controller.js`, `routes/index.js`, `server.js` (ciclo de retención), `public/superadmin.html`, `public/js/{superadmin,superadmin-consultas,superadmin-limpieza,reportes-tabla,iconos}.js`, `public/css/estilos.css` (barra de reportes, consultas, impresión), `test/e2e.js` (sección Ñ, 30 pruebas). Verificado en navegador: 4 módulos, ficha, búsqueda, consultas con orden/búsqueda/CSV, limpieza con doble confirmación, retención editable, responsive, sin errores de consola.
+
 ## 2026-07-15 · v2.5 — Módulo de Control de Caja + selector vehículo/peatón
 
 **Suite e2e: 104 → 120 pruebas.** Ninguna función previa cambió su comportamiento (dueños y superadmin siguen igual).

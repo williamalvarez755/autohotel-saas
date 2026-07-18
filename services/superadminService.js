@@ -38,10 +38,12 @@ function sumarUnMes(fecha) {
   return `${base.getUTCFullYear()}-${mes}-${String(dia).padStart(2, '0')}`;
 }
 
-/** Lista de dueños con hoteles, suscripción y estado calculado. */
+/** Lista de dueños con ficha, hoteles, suscripción y estado calculado. */
 async function listarDuenos() {
   const [filas] = await pool.query(
     `SELECT u.id, u.nombre, u.usuario, u.activo,
+            u.dpi, u.nit, u.telefono, u.correo, u.direccion, u.observaciones,
+            u.creado_en, u.ultimo_acceso,
             s.estado AS suscripcion_estado, s.fecha_vencimiento,
             (SELECT COUNT(*) FROM hoteles h WHERE h.dueno_id = u.id AND h.activo = 1) AS hoteles_activos,
             (SELECT COUNT(*) FROM usuarios t WHERE t.dueno_id = u.id AND t.rol = 'trabajador' AND t.activo = 1) AS trabajadores_activos
@@ -74,9 +76,14 @@ async function crearDueno(datos) {
     const hash = await bcrypt.hash(datos.password, RONDAS_BCRYPT);
     const ahora = ahoraGT();
     const [resultado] = await cx.query(
-      `INSERT INTO usuarios (rol, nombre, usuario, password_hash, dueno_id, hotel_id, activo, creado_en)
-       VALUES ('dueno', ?, ?, ?, NULL, NULL, 1, ?)`,
-      [datos.nombre, datos.usuario, hash, ahora]
+      `INSERT INTO usuarios
+         (rol, nombre, usuario, password_hash, dueno_id, hotel_id, activo, creado_en,
+          dpi, nit, telefono, correo, direccion, observaciones)
+       VALUES ('dueno', ?, ?, ?, NULL, NULL, 1, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        datos.nombre, datos.usuario, hash, ahora,
+        datos.dpi, datos.nit, datos.telefono, datos.correo, datos.direccion, datos.observaciones
+      ]
     );
     await cx.query(
       `INSERT INTO suscripciones (dueno_id, estado, fecha_vencimiento, actualizado_en)
@@ -87,7 +94,7 @@ async function crearDueno(datos) {
   });
 }
 
-/** Edita nombre y, opcionalmente, la contraseña de un dueño. */
+/** Edita la ficha completa del dueño y, opcionalmente, su contraseña. */
 async function editarDueno(duenoId, datos) {
   return conTransaccion(async (cx) => {
     const [filas] = await cx.query(
@@ -96,11 +103,19 @@ async function editarDueno(duenoId, datos) {
     );
     if (!filas.length) throw new ErrorNegocio('Dueño no encontrado', 404);
 
+    await cx.query(
+      `UPDATE usuarios
+          SET nombre = ?, dpi = ?, nit = ?, telefono = ?, correo = ?,
+              direccion = ?, observaciones = ?
+        WHERE id = ?`,
+      [
+        datos.nombre, datos.dpi, datos.nit, datos.telefono, datos.correo,
+        datos.direccion, datos.observaciones, duenoId
+      ]
+    );
     if (datos.password) {
       const hash = await bcrypt.hash(datos.password, RONDAS_BCRYPT);
-      await cx.query('UPDATE usuarios SET nombre = ?, password_hash = ? WHERE id = ?', [datos.nombre, hash, duenoId]);
-    } else {
-      await cx.query('UPDATE usuarios SET nombre = ? WHERE id = ?', [datos.nombre, duenoId]);
+      await cx.query('UPDATE usuarios SET password_hash = ? WHERE id = ?', [hash, duenoId]);
     }
     return { id: duenoId };
   });
@@ -283,6 +298,86 @@ async function editarHotel(hotelId, datos) {
   });
 }
 
+/**
+ * Elimina FÍSICAMENTE un hotel, solo si no tiene información
+ * operativa relacionada. Reglas (pedidas por el negocio):
+ * - Estancias activas / habitaciones ocupadas → bloqueado.
+ * - Reservas pendientes → bloqueado.
+ * - Pagos pendientes (estancias activas sin cobro base) → cubierto
+ *   por el bloqueo de estancias activas.
+ * - Trabajadores asignados → bloqueado (reasignar o desactivar).
+ * - CUALQUIER historial (estancias, cobros, reservas, pedidos,
+ *   movimientos, turnos de caja) → bloqueado: solo se ofrece la
+ *   desactivación lógica (editarHotel con activo=0).
+ * Si está limpio, borra su estructura (tarifas, productos,
+ * habitaciones) y el hotel, en transacción. No toca a los demás
+ * hoteles del dueño ni la ficha del propietario.
+ */
+async function eliminarHotel(hotelId) {
+  return conTransaccion(async (cx) => {
+    const [hoteles] = await cx.query(
+      'SELECT id, nombre, dueno_id FROM hoteles WHERE id = ? LIMIT 1 FOR UPDATE',
+      [hotelId]
+    );
+    if (!hoteles.length) throw new ErrorNegocio('Hotel no encontrado', 404);
+    const hotel = hoteles[0];
+
+    // Bloqueos duros (procesos críticos abiertos)
+    const [[activas]] = await cx.query(
+      `SELECT COUNT(*) AS n FROM estancias WHERE hotel_id = ? AND estado = 'activa'`, [hotelId]
+    );
+    if (activas.n > 0) {
+      throw new ErrorNegocio(`No se puede eliminar: hay ${activas.n} habitación(es) ocupada(s) / estancia(s) activa(s). Finalícelas primero.`);
+    }
+    const [[pendientes]] = await cx.query(
+      `SELECT COUNT(*) AS n FROM reservas WHERE hotel_id = ? AND estado = 'pendiente'`, [hotelId]
+    );
+    if (pendientes.n > 0) {
+      throw new ErrorNegocio(`No se puede eliminar: hay ${pendientes.n} reserva(s) pendiente(s). Cancélelas o conviértalas primero.`);
+    }
+    const [[cajaAbierta]] = await cx.query(
+      `SELECT COUNT(*) AS n FROM turnos_caja WHERE hotel_id = ? AND estado = 'abierta'`, [hotelId]
+    );
+    if (cajaAbierta.n > 0) {
+      throw new ErrorNegocio('No se puede eliminar: hay una caja abierta en este hotel. Ciérrela primero.');
+    }
+    const [[trabajadores]] = await cx.query(
+      `SELECT COUNT(*) AS n FROM usuarios WHERE hotel_id = ? AND rol = 'trabajador'`, [hotelId]
+    );
+    if (trabajadores.n > 0) {
+      throw new ErrorNegocio(`No se puede eliminar: tiene ${trabajadores.n} trabajador(es) asignado(s). Reasígnelos o elimínelos primero.`);
+    }
+
+    // Historial: si existe, solo se permite la desactivación lógica
+    const [[historial]] = await cx.query(
+      `SELECT
+         (SELECT COUNT(*) FROM estancias WHERE hotel_id = ?) +
+         (SELECT COUNT(*) FROM cobros    WHERE hotel_id = ?) +
+         (SELECT COUNT(*) FROM reservas  WHERE hotel_id = ?) +
+         (SELECT COUNT(*) FROM pedidos   WHERE hotel_id = ?) +
+         (SELECT COUNT(*) FROM movimientos_inventario WHERE hotel_id = ?) +
+         (SELECT COUNT(*) FROM turnos_caja WHERE hotel_id = ?) AS n`,
+      [hotelId, hotelId, hotelId, hotelId, hotelId, hotelId]
+    );
+    if (historial.n > 0) {
+      const error = new ErrorNegocio(
+        `El hotel tiene ${historial.n} registro(s) de historial (estancias, cobros, reservas…). ` +
+        'Para conservar la contabilidad no se elimina físicamente: use la desactivación.'
+      );
+      error.ofrecerDesactivacion = true;
+      throw error;
+    }
+
+    // Limpio: borra la estructura y el hotel
+    await cx.query('DELETE FROM tarifas WHERE hotel_id = ?', [hotelId]);
+    await cx.query('DELETE FROM productos WHERE hotel_id = ?', [hotelId]);
+    await cx.query('DELETE FROM habitaciones WHERE hotel_id = ?', [hotelId]);
+    await cx.query('DELETE FROM hoteles WHERE id = ?', [hotelId]);
+
+    return { id: hotelId, nombre: hotel.nombre, dueno_id: hotel.dueno_id };
+  });
+}
+
 module.exports = {
   listarDuenos,
   crearDueno,
@@ -293,6 +388,7 @@ module.exports = {
   pagosDeDueno,
   crearHotel,
   editarHotel,
+  eliminarHotel,
   estadoCalculado,
   sumarUnMes
 };

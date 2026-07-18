@@ -9,6 +9,7 @@ const { ROLES, MENSAJES, LIMITES } = require('../config/constantes');
 const { ErrorNegocio } = require('../middleware/errores');
 const { suscripcionBloqueada } = require('../middleware/auth');
 const { hotelesDeDueno } = require('../middleware/tenant');
+const { ahoraGT } = require('../utils/fechas');
 
 // Hash de relleno para igualar el tiempo de respuesta cuando el
 // usuario no existe (evita enumeración de usuarios por tiempos).
@@ -52,6 +53,9 @@ async function login(nombreUsuario, password) {
       throw new ErrorNegocio('El hotel asignado no está disponible, comuníquese con el dueño', 403);
     }
   }
+
+  // Último acceso (auditoría de accesos del superadmin)
+  await pool.query('UPDATE usuarios SET ultimo_acceso = ? WHERE id = ?', [ahoraGT(), usuario.id]);
 
   return usuario;
 }

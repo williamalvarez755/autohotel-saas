@@ -16,6 +16,8 @@ USE autohotel_saas;
 -- (dueño de hotel / trabajador con hotel), por lo que se
 -- desactiva temporalmente la verificación de llaves foráneas.
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS auditoria;
+DROP TABLE IF EXISTS politicas_retencion;
 DROP TABLE IF EXISTS cobros;
 DROP TABLE IF EXISTS turnos_caja;
 DROP TABLE IF EXISTS pedidos;
@@ -48,11 +50,55 @@ CREATE TABLE usuarios (
   hotel_id      INT UNSIGNED NULL,
   activo        TINYINT(1) NOT NULL DEFAULT 1,
   creado_en     DATETIME NOT NULL,
+  -- Ficha del propietario (la llena el superadmin; vacía en otros roles)
+  dpi           VARCHAR(20)  NOT NULL DEFAULT '',
+  nit           VARCHAR(20)  NOT NULL DEFAULT '',
+  telefono      VARCHAR(25)  NOT NULL DEFAULT '',
+  correo        VARCHAR(100) NOT NULL DEFAULT '',
+  direccion     VARCHAR(200) NOT NULL DEFAULT '',
+  observaciones VARCHAR(500) NOT NULL DEFAULT '',
+  -- Último inicio de sesión exitoso (para auditoría de accesos)
+  ultimo_acceso DATETIME NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_usuarios_usuario (usuario),
   KEY idx_usuarios_dueno (dueno_id),
   KEY idx_usuarios_hotel (hotel_id),
   CONSTRAINT fk_usuarios_dueno FOREIGN KEY (dueno_id) REFERENCES usuarios (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- AUDITORÍA (acciones administrativas del superadmin y del
+-- limpiador programado). usuario_id en NULL = acción del sistema.
+-- Se guarda el nombre plano para que el registro sobreviva a la
+-- eliminación del usuario.
+-- ------------------------------------------------------------
+CREATE TABLE auditoria (
+  id             INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  usuario_id     INT UNSIGNED NULL,
+  usuario_nombre VARCHAR(100) NOT NULL DEFAULT 'Sistema',
+  accion         VARCHAR(100) NOT NULL,
+  detalle        VARCHAR(500) NOT NULL DEFAULT '',
+  ip             VARCHAR(45)  NOT NULL DEFAULT '',
+  fecha          DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_auditoria_fecha (fecha),
+  KEY idx_auditoria_accion (accion)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- POLÍTICAS DE RETENCIÓN (limpieza de datos históricos)
+-- meses = cuánto conservar; programada = frecuencia de limpieza
+-- automática ('manual' = solo a mano). Las filas por defecto las
+-- crea el servicio al primer uso (también en instalaciones viejas).
+-- ------------------------------------------------------------
+CREATE TABLE politicas_retencion (
+  id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  tipo             VARCHAR(40) NOT NULL,
+  meses            INT UNSIGNED NOT NULL DEFAULT 24,
+  programada       ENUM('manual','mensual','trimestral','anual') NOT NULL DEFAULT 'manual',
+  ultima_ejecucion DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_politicas_tipo (tipo)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------

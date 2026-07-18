@@ -24,6 +24,7 @@ const reportesController = require('../controllers/reportesController');
 const alertasController = require('../controllers/alertasController');
 const usuariosController = require('../controllers/usuariosController');
 const superadminController = require('../controllers/superadminController');
+const consultasController = require('../controllers/consultasController');
 
 const router = express.Router();
 
@@ -113,5 +114,17 @@ router.post('/superadmin/duenos/:id/pagos', soloSuperadmin, e(superadminControll
 router.get('/superadmin/duenos/:id/pagos', soloSuperadmin, e(superadminController.pagosDeDueno));
 router.post('/superadmin/hoteles', soloSuperadmin, e(superadminController.crearHotel));
 router.put('/superadmin/hoteles/:id', soloSuperadmin, e(superadminController.editarHotel));
+router.delete('/superadmin/hoteles/:id', soloSuperadmin, e(superadminController.eliminarHotel));
+
+// Consultas avanzadas (solo superadmin; catálogo parametrizado)
+router.get('/superadmin/consultas/hoteles', soloSuperadmin, e(consultasController.hotelesFiltro));
+router.get('/superadmin/consultas/:tipo', soloSuperadmin, e(consultasController.consultar));
+
+// Limpieza de datos históricos + políticas de retención
+router.get('/superadmin/limpieza/resumen', soloSuperadmin, e(consultasController.limpiezaResumen));
+router.get('/superadmin/limpieza/respaldo', soloSuperadmin, e(consultasController.limpiezaRespaldo));
+router.post('/superadmin/limpieza/ejecutar', soloSuperadmin, e(consultasController.limpiezaEjecutar));
+router.get('/superadmin/retencion', soloSuperadmin, e(consultasController.politicas));
+router.put('/superadmin/retencion', soloSuperadmin, e(consultasController.actualizarPolitica));
 
 module.exports = router;

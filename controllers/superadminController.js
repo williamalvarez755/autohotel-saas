@@ -4,11 +4,28 @@
 // ============================================================
 
 const superadminService = require('../services/superadminService');
+const auditoriaService = require('../services/auditoriaService');
 const { ok } = require('../utils/respuesta');
 const { hoyGT, esFechaValida, mesActualGT } = require('../utils/fechas');
 const { ErrorNegocio } = require('../middleware/errores');
 const { LIMITES } = require('../config/constantes');
 const v = require('../utils/validacion');
+
+/** Ficha del propietario (todos los campos opcionales). */
+function validarFicha(cuerpo) {
+  const correo = v.textoOpcional(cuerpo.correo, 'correo', 100);
+  if (correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    throw new ErrorNegocio('El correo electrónico no tiene un formato válido');
+  }
+  return {
+    dpi: v.textoOpcional(cuerpo.dpi, 'DPI', 20),
+    nit: v.textoOpcional(cuerpo.nit, 'NIT', 20),
+    telefono: v.textoOpcional(cuerpo.telefono, 'teléfono', 25),
+    correo,
+    direccion: v.textoOpcional(cuerpo.direccion, 'dirección', 200),
+    observaciones: v.textoOpcional(cuerpo.observaciones, 'observaciones', 500)
+  };
+}
 
 async function listarDuenos(req, res) {
   const datos = await superadminService.listarDuenos();
@@ -29,9 +46,11 @@ async function crearDueno(req, res) {
     nombre: v.textoRequerido(cuerpo.nombre, 'nombre', 100),
     usuario: v.nombreUsuario(cuerpo.usuario),
     password: v.contrasena(cuerpo.password),
-    fecha_vencimiento: vencimiento
+    fecha_vencimiento: vencimiento,
+    ...validarFicha(cuerpo)
   };
   const resultado = await superadminService.crearDueno(datos);
+  await auditoriaService.registrar(req.usuario, req, 'dueno.crear', `Dueño "${datos.nombre}" (${datos.usuario})`);
   return ok(res, resultado, 'Dueño creado');
 }
 
@@ -40,9 +59,12 @@ async function editarDueno(req, res) {
   const cuerpo = req.body || {};
   const datos = {
     nombre: v.textoRequerido(cuerpo.nombre, 'nombre', 100),
-    password: cuerpo.password ? v.contrasena(cuerpo.password) : null
+    password: cuerpo.password ? v.contrasena(cuerpo.password) : null,
+    ...validarFicha(cuerpo)
   };
   const resultado = await superadminService.editarDueno(id, datos);
+  await auditoriaService.registrar(req.usuario, req, 'dueno.editar',
+    `Dueño #${id} "${datos.nombre}"${datos.password ? ' (con cambio de contraseña)' : ''}`);
   return ok(res, resultado, 'Dueño actualizado');
 }
 
@@ -51,18 +73,22 @@ async function eliminarDueno(req, res) {
   // Confirmación fuerte: hay que escribir el usuario exacto del dueño
   const confirmacion = v.textoRequerido((req.body || {}).confirmar_usuario, 'confirmar_usuario', 50).toLowerCase();
   const resultado = await superadminService.eliminarDueno(id, confirmacion);
+  await auditoriaService.registrar(req.usuario, req, 'dueno.eliminar',
+    `Dueño #${id} "${resultado.nombre}" eliminado con ${resultado.hoteles_eliminados} hotel(es)`);
   return ok(res, resultado, `Dueño "${resultado.nombre}" eliminado definitivamente junto con todos sus datos`);
 }
 
 async function suspender(req, res) {
   const id = v.idValido(req.params.id);
   const resultado = await superadminService.cambiarSuspension(id, true);
+  await auditoriaService.registrar(req.usuario, req, 'dueno.suspender', `Dueño #${id}`);
   return ok(res, resultado, 'Cuenta suspendida');
 }
 
 async function reactivar(req, res) {
   const id = v.idValido(req.params.id);
   const resultado = await superadminService.cambiarSuspension(id, false);
+  await auditoriaService.registrar(req.usuario, req, 'dueno.reactivar', `Dueño #${id}`);
   return ok(res, resultado, 'Cuenta reactivada');
 }
 
@@ -79,6 +105,8 @@ async function registrarPago(req, res) {
     nota: v.textoOpcional(cuerpo.nota, 'nota', 200)
   };
   const resultado = await superadminService.registrarPago(req.usuario.id, id, datos);
+  await auditoriaService.registrar(req.usuario, req, 'suscripcion.pago',
+    `Dueño #${id}: Q ${datos.monto} (${datos.mes_correspondiente}) → vence ${resultado.nueva_fecha_vencimiento}`);
   return ok(res, resultado, 'Pago registrado y suscripción extendida');
 }
 
@@ -106,6 +134,8 @@ async function crearHotel(req, res) {
   const datos = validarDatosHotel(cuerpo);
   datos.dueno_id = v.idValido(cuerpo.dueno_id, 'dueno_id');
   const resultado = await superadminService.crearHotel(datos);
+  await auditoriaService.registrar(req.usuario, req, 'hotel.crear',
+    `Hotel "${datos.nombre}" para el dueño #${datos.dueno_id}`);
   return ok(res, resultado, 'Hotel creado');
 }
 
@@ -115,7 +145,17 @@ async function editarHotel(req, res) {
   const datos = validarDatosHotel(cuerpo);
   datos.activo = v.booleano(cuerpo.activo !== undefined ? cuerpo.activo : true, 'activo');
   const resultado = await superadminService.editarHotel(id, datos);
+  await auditoriaService.registrar(req.usuario, req, 'hotel.editar',
+    `Hotel #${id} "${datos.nombre}" (activo=${datos.activo})`);
   return ok(res, resultado, 'Hotel actualizado');
+}
+
+async function eliminarHotel(req, res) {
+  const id = v.idValido(req.params.id);
+  const resultado = await superadminService.eliminarHotel(id);
+  await auditoriaService.registrar(req.usuario, req, 'hotel.eliminar',
+    `Hotel #${id} "${resultado.nombre}" eliminado físicamente (sin historial)`);
+  return ok(res, resultado, `Hotel "${resultado.nombre}" eliminado`);
 }
 
 module.exports = {
@@ -128,5 +168,6 @@ module.exports = {
   registrarPago,
   pagosDeDueno,
   crearHotel,
-  editarHotel
+  editarHotel,
+  eliminarHotel
 };

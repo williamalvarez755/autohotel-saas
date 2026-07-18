@@ -39,6 +39,16 @@ INSERT INTO usuarios (id, rol, nombre, usuario, password_hash, dueno_id, hotel_i
   (6, 'trabajador', 'Jorge Castillo', 'jorge', '$2b$10$oAusAg1ICbaX9aHzN.AJ8eB3hKlMFQPmVSDxggADoFK5RiDwzokcS', 2, 2, 1, @ahora),
   (7, 'trabajador', 'Ana Morales',    'ana',   '$2b$10$oAusAg1ICbaX9aHzN.AJ8eB3hKlMFQPmVSDxggADoFK5RiDwzokcS', 3, 3, 1, @ahora);
 
+-- ---------- Ficha de contacto de los propietarios ----------
+UPDATE usuarios SET dpi = '2547 88213 0101', nit = '4581235-6', telefono = '5012-8890',
+  correo = 'carlos.mendez@correo.com', direccion = 'Zona 10, Ciudad de Guatemala',
+  observaciones = 'Propietario de dos autohoteles. Cliente desde el inicio.'
+  WHERE usuario = 'carlos';
+UPDATE usuarios SET dpi = '1988 45120 0108', nit = 'CF', telefono = '4478-1200',
+  correo = 'maria.lopez@correo.com', direccion = 'Amatitlán, Guatemala',
+  observaciones = 'Un autohotel en la carretera al Pacífico.'
+  WHERE usuario = 'maria';
+
 -- ---------- Suscripciones (vencen en 30 días a partir de hoy) ----------
 INSERT INTO suscripciones (dueno_id, estado, fecha_vencimiento, actualizado_en) VALUES
   (2, 'activa', DATE(@ahora) + INTERVAL 30 DAY, @ahora),

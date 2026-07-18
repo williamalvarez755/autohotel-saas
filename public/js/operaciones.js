@@ -12,6 +12,7 @@
 function modalEntrada(habitacion, reserva) {
   if (!requiereCaja()) return; // el trabajador necesita caja abierta para cobrar
   const tarifas = habitacion.tarifas || [];
+  const extras = habitacion.extras || [];
   if (!tarifas.length && Number(habitacion.precio_noche) <= 0) {
     return aviso('Esta habitación no tiene tarifas configuradas: el dueño debe definirlas en Habitaciones', true);
   }
@@ -43,35 +44,70 @@ function modalEntrada(habitacion, reserva) {
             <strong class="monto">${formatoQ(habitacion.precio_noche)}</strong>
           </button>
         </div></div>
+      ${extras.length ? `
+      <div class="campo"><label>Extras opcionales (toque para agregar)</label>
+        <div class="grupo-opciones tarifas" id="me-extras">
+          ${extras.map((x) => `
+          <button type="button" class="opcion tarifa" data-extra="${x.id}">
+            <span class="nombre-tarifa">${escapar(x.nombre)}</span>
+            <span class="detalle-tarifa">extra opcional</span>
+            <strong class="monto">+ ${formatoQ(x.precio)}</strong>
+          </button>`).join('')}
+        </div></div>` : ''}
       <div class="desglose">
         <div class="linea"><span>Tiempo incluido</span><strong id="me-tiempo"></strong></div>
         <div class="linea"><span>Hora extra excedida</span><strong>${formatoQ(habitacion.precio_hora_extra)}</strong></div>
         ${reserva && Number(reserva.cargo_extra) > 0 ? `
         <div class="linea"><span>Cargo de la reserva${reserva.cargo_descripcion ? ` (${escapar(reserva.cargo_descripcion)})` : ''}</span>
           <strong class="monto">${formatoQ(reserva.cargo_extra)}</strong></div>` : ''}
+        <div class="linea oculto" id="me-linea-extras"><span id="me-extras-nombres">Extras</span>
+          <strong class="monto" id="me-extras-total"></strong></div>
         <div class="linea grande"><span>Total a cobrar</span><span class="monto" id="me-total"></span></div>
       </div>`,
     pie: `<button class="boton secundario" id="me-cancelar">Cancelar</button>
           <button class="boton" id="me-registrar">Registrar entrada</button>`
   });
 
-  // El cargo de la reserva (si existe) se suma al total mostrado;
-  // el backend lo calcula igual desde la reserva fotografiada.
+  // El cargo de la reserva (si existe) y los extras elegidos se suman
+  // al total mostrado; el backend recalcula todo desde sus tablas.
   const cargoReserva = reserva ? Number(reserva.cargo_extra) || 0 : 0;
+
+  const extrasSeleccionados = () => Array.from(
+    document.querySelectorAll('#me-extras .opcion.activa')
+  ).map((b) => extras.find((x) => x.id === Number(b.dataset.extra))).filter(Boolean);
+
   const actualizarTotal = () => {
+    const elegidos = extrasSeleccionados();
+    const totalExtras = elegidos.reduce((s, x) => s + Number(x.precio), 0);
+    const linea = document.getElementById('me-linea-extras');
+    if (linea) {
+      linea.classList.toggle('oculto', !elegidos.length);
+      document.getElementById('me-extras-nombres').textContent =
+        'Extras: ' + elegidos.map((x) => x.nombre).join(' + ');
+      document.getElementById('me-extras-total').textContent = formatoQ(totalExtras);
+    }
+    const adicionales = cargoReserva + totalExtras;
     const valor = opcionActiva(document.getElementById('me-tipo'));
     if (valor === 'noche') {
-      document.getElementById('me-total').textContent = formatoQ(Number(habitacion.precio_noche) + cargoReserva);
+      document.getElementById('me-total').textContent = formatoQ(Number(habitacion.precio_noche) + adicionales);
       document.getElementById('me-tiempo').textContent = 'Noche completa';
       return;
     }
     const tarifa = tarifas.find((t) => `tarifa-${t.id}` === valor);
     if (tarifa) {
-      document.getElementById('me-total').textContent = formatoQ(Number(tarifa.precio) + cargoReserva);
+      document.getElementById('me-total').textContent = formatoQ(Number(tarifa.precio) + adicionales);
       document.getElementById('me-tiempo').textContent = `${tarifa.horas} hora${tarifa.horas > 1 ? 's' : ''} (${tarifa.nombre})`;
     }
   };
   activarGrupoOpciones(document.getElementById('me-tipo'), actualizarTotal);
+
+  // Extras: selección MÚLTIPLE (cada botón se prende/apaga solo)
+  document.querySelectorAll('#me-extras .opcion').forEach((boton) => {
+    boton.addEventListener('click', () => {
+      boton.classList.toggle('activa');
+      actualizarTotal();
+    });
+  });
   actualizarTotal();
 
   // Con vehículo / a pie: solo muestra la placa cuando llegan en carro.
@@ -86,7 +122,8 @@ function modalEntrada(habitacion, reserva) {
     const cuerpo = {
       habitacion_id: habitacion.id,
       placa: aPie ? '' : valorModal('#me-placa').toUpperCase(),
-      tipo: valor === 'noche' ? 'noche' : 'horas'
+      tipo: valor === 'noche' ? 'noche' : 'horas',
+      extras: extrasSeleccionados().map((x) => x.id)
     };
     if (valor !== 'noche') cuerpo.tarifa_id = Number(valor.replace('tarifa-', ''));
     if (reserva) cuerpo.reserva_id = reserva.id || reserva.reserva_id;
@@ -115,7 +152,7 @@ function modalCobroBase(estancia) {
         <div class="linea"><span>Salida prevista</span><strong>${formatoFechaHora(estancia.hora_salida_prevista)}</strong></div>
         ${cargoExtra > 0 ? `
         <div class="linea"><span>Habitación</span><span class="monto">${formatoQ(estancia.total_base)}</span></div>
-        <div class="linea"><span>Cargo de reserva${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
+        <div class="linea"><span>Cargos adicionales${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
           <span class="monto">${formatoQ(cargoExtra)}</span></div>` : ''}
         <div class="linea grande"><span>Total a pagar</span><span class="monto">${formatoQ(totalCobro)}</span></div>
       </div>
@@ -191,7 +228,7 @@ async function modalEstancia(habitacion) {
         <div class="linea"><span>Tarifa</span>
           <strong>${escapar(estancia.tarifa_nombre) || (estancia.tipo === 'noche' ? 'Noche completa' : estancia.horas_contratadas + ' hora(s)')} · ${formatoQ(estancia.total_base)}</strong></div>
         ${Number(estancia.cargo_extra) > 0 ? `
-        <div class="linea"><span>Cargo de reserva${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
+        <div class="linea"><span>Cargos adicionales${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
           <strong class="monto">${formatoQ(estancia.cargo_extra)}</strong></div>` : ''}
         <div class="linea"><span>Cobro base</span>
           ${estancia.pagado_base
@@ -404,7 +441,7 @@ async function modalSalida(estanciaId) {
           ${d.pagado_base ? '<span class="suave">· ya pagado</span>' : ''}</span>
           <span class="monto">${formatoQ(d.total_base)}</span></div>
         ${Number(d.cargo_extra) > 0 ? `
-        <div class="linea"><span>Cargo de reserva${d.cargo_descripcion ? ` (${escapar(d.cargo_descripcion)})` : ''}
+        <div class="linea"><span>Cargos adicionales${d.cargo_descripcion ? ` (${escapar(d.cargo_descripcion)})` : ''}
           ${d.pagado_base ? '<span class="suave">· ya pagado</span>' : ''}</span>
           <span class="monto">${formatoQ(d.cargo_extra)}</span></div>` : ''}
         ${d.horas_extra > 0 ? `

@@ -129,6 +129,15 @@ INSERT INTO tarifas (hotel_id, habitacion_id, nombre, horas, precio) VALUES
   (3, 23, '3 horas', 3, 120.00), (3, 23, '4 horas', 4, 150.00),
   (3, 24, '3 horas', 3, 120.00), (3, 24, '4 horas', 4, 150.00);
 
+-- ---------- Extras opcionales (el dueño elige qué habitaciones los ofrecen) ----------
+INSERT INTO extras_habitacion (hotel_id, habitacion_id, nombre, precio) VALUES
+  -- El Paraíso: superiores y suites ofrecen jacuzzi
+  (1, 4, 'Jacuzzi', 40.00),
+  (1, 7, 'Jacuzzi', 40.00), (1, 7, 'Decoración romántica', 75.00),
+  (1, 8, 'Jacuzzi', 40.00),
+  -- Luna Azul: sector B con jacuzzi
+  (2, 13, 'Jacuzzi', 35.00);
+
 -- ---------- Productos: 10 típicos por hotel ----------
 INSERT INTO productos (hotel_id, nombre, precio, stock, stock_minimo, activo, creado_en) VALUES
   -- AutoHotel El Paraíso

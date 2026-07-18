@@ -73,7 +73,7 @@ Cambio manual para casos especiales. Bloqueado si hay estancia activa; si estaba
 { "habitacion_id": 3, "placa": "P-777XY", "tipo": "noche" }
 { "habitacion_id": 3, "placa": "P-777XY", "tipo": "horas", "tarifa_id": 5, "reserva_id": 5 }
 ```
-Reglas: habitación disponible (o reservada solo con su `reserva_id`). `placa` es **opcional** (clientes que llegan a pie: se guarda vacía). `tipo horas` exige `tarifa_id` **del menú de esa habitación** (una tarifa de otra habitación u otro hotel → 404): la tarifa dicta `total_base` (su precio) y la duración (`hora_salida_prevista = entrada + horas de la tarifa`). `tipo noche`: `total_base = precio_noche`, duración = `horas_noche` del hotel. La estancia **fotografía** `tarifa_nombre`, `precio_hora_extra` y el `cargo_extra` de la reserva (si hubo) — cambios de precios posteriores no la afectan. Habitación → OCUPADA; reserva → usada.
+Reglas: habitación disponible (o reservada solo con su `reserva_id`). `placa` es **opcional** (clientes que llegan a pie: se guarda vacía). `tipo horas` exige `tarifa_id` **del menú de esa habitación** (una tarifa de otra habitación u otro hotel → 404): la tarifa dicta `total_base` (su precio) y la duración (`hora_salida_prevista = entrada + horas de la tarifa`). `tipo noche`: `total_base = precio_noche`, duración = `horas_noche` del hotel. `extras` (opcional): ids de **extras de ESA habitación** (ej. jacuzzi; ajeno → 404); su suma y nombres se pliegan en `cargo_extra`/`cargo_descripcion` y se cobran con el base. La estancia **fotografía** `tarifa_nombre`, `precio_hora_extra` y el `cargo_extra` (reserva + extras) — cambios de precios posteriores no la afectan. Habitación → OCUPADA; reserva → usada.
 → `data`: estancia con totales para la pantalla de cobro.
 
 ### POST /estancias/:id/pago-base — [D][T] — cobro adelantado
@@ -153,6 +153,7 @@ Cierra la caja abierta (trabajador o dueño): `monto_sistema = fondo + efectivo 
 ### POST /caja/retiros — [D][T] — `{ monto, justificacion }`
 Retiro de efectivo de la caja abierta (gasto operativo o retiro del dueño). Exige justificación y que el monto no exceda el efectivo disponible (400). Sin caja abierta → 409. Genera y guarda la **nota automática** `DD-MM-YYYY se retira [monto] para [justificación]` y devuelve el nuevo esperado.
 ### GET /caja/retiros — [D][T] — retiros/notas de la caja abierta del hotel.
+### GET /caja/gastos?desde&hasta — [D] — historial de gastos del hotel (todas las cajas) con `total_gastos` (excluye cierres). Alimenta el módulo Gastos.
 ### GET /caja/:id/retiros — [D] — notas de cualquier turno del hotel (auditoría del historial).
 ### GET /caja/historial — [D] — turnos del hotel con fondo, `total_retiros`, esperado, declarado, descuadre y conteo de notas; las cajas abiertas muestran su esperado en vivo.
 

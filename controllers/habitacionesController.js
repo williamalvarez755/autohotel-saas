@@ -47,12 +47,44 @@ function validarTarifas(valor) {
   });
 }
 
+/**
+ * Valida los extras opcionales de una habitación (0 a N): lista de
+ * { nombre, precio }. Vacío = la habitación no ofrece extras.
+ */
+function validarExtras(valor) {
+  if (valor === undefined || valor === null) return [];
+  if (!Array.isArray(valor)) {
+    throw new ErrorNegocio('Los extras deben ser una lista de { nombre, precio }');
+  }
+  if (valor.length > LIMITES.MAX_EXTRAS_POR_HABITACION) {
+    throw new ErrorNegocio(`Máximo ${LIMITES.MAX_EXTRAS_POR_HABITACION} extras por habitación`);
+  }
+  const nombres = new Set();
+  return valor.map((e) => {
+    const cuerpo = e || {};
+    const extra = {
+      nombre: v.textoRequerido(cuerpo.nombre, 'nombre del extra', 60),
+      precio: v.montoNoNegativo(cuerpo.precio, 'precio del extra', LIMITES.MAX_MONTO)
+    };
+    if (extra.precio <= 0) {
+      throw new ErrorNegocio(`El extra "${extra.nombre}" debe tener un precio mayor que cero`);
+    }
+    const clave = extra.nombre.toLowerCase();
+    if (nombres.has(clave)) {
+      throw new ErrorNegocio(`El extra "${extra.nombre}" está repetido`);
+    }
+    nombres.add(clave);
+    return extra;
+  });
+}
+
 function validarDatosHabitacion(cuerpo) {
   return {
     nombre: v.textoRequerido(cuerpo.nombre, 'nombre', 50),
     precio_noche: v.montoNoNegativo(cuerpo.precio_noche, 'precio por noche', LIMITES.MAX_MONTO),
     precio_hora_extra: v.montoNoNegativo(cuerpo.precio_hora_extra, 'precio por hora extra', LIMITES.MAX_MONTO),
-    tarifas: validarTarifas(cuerpo.tarifas)
+    tarifas: validarTarifas(cuerpo.tarifas),
+    extras: validarExtras(cuerpo.extras)
   };
 }
 

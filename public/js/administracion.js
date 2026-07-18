@@ -570,6 +570,7 @@ async function cargarHabitacionesAdmin() {
             <div class="chips-tarifas">
               ${(h.tarifas || []).map((t) => `<span class="chip-tarifa">${t.horas}h · <strong>${formatoQ(t.precio)}</strong></span>`).join('')
                 || '<span class="etiqueta amarilla">Sin tarifas</span>'}
+              ${(h.extras || []).map((x) => `<span class="chip-tarifa extra">＋ ${escapar(x.nombre)} <strong>${formatoQ(x.precio)}</strong></span>`).join('')}
             </div>
           </td>
           <td class="derecha monto">${formatoQ(h.precio_noche)}</td>
@@ -609,6 +610,10 @@ function modalHabitacion(habitacion) {
   const tarifas = esEdicion && habitacion.tarifas && habitacion.tarifas.length
     ? habitacion.tarifas.map((t) => ({ nombre: t.nombre, horas: t.horas, precio: t.precio }))
     : [{ nombre: '3 horas', horas: 3, precio: '' }];
+  // Extras opcionales (vacío = la habitación no ofrece extras)
+  const extras = esEdicion && habitacion.extras && habitacion.extras.length
+    ? habitacion.extras.map((x) => ({ nombre: x.nombre, precio: x.precio }))
+    : [];
 
   abrirModal({
     titulo: esEdicion ? `Editar habitación · ${escapar(habitacion.nombre)}` : 'Nueva habitación',
@@ -622,6 +627,13 @@ function modalHabitacion(habitacion) {
         <div class="editor-tarifas" id="mh-tarifas"></div>
         <button type="button" class="boton secundario chico" id="mh-agregar-tarifa" style="margin-top:8px">${icono('mas', 14)} Agregar tarifa</button>
         <div class="ayuda">Ejemplo: "3 horas" = Q100, "6 horas" = Q160. El recepcionista elegirá una al registrar la entrada.</div>
+      </div>
+
+      <div class="campo">
+        <label>Extras opcionales (solo si esta habitación los ofrece)</label>
+        <div class="editor-tarifas" id="mh-extras"></div>
+        <button type="button" class="boton secundario chico" id="mh-agregar-extra" style="margin-top:8px">${icono('mas', 14)} Agregar extra</button>
+        <div class="ayuda">Ejemplo: "Jacuzzi" = Q40. Aparecen como botones en la entrada y el recepcionista los activa si el cliente los pide. Deje vacío si no aplica.</div>
       </div>
 
       <div class="fila-campos">
@@ -676,6 +688,38 @@ function modalHabitacion(habitacion) {
     if (ultima) ultima.querySelector('.t-nombre').focus();
   });
 
+  // ---- Editor de extras opcionales (mismo patrón que las tarifas) ----
+  const contenedorExtras = document.getElementById('mh-extras');
+  const dibujarExtras = () => {
+    contenedorExtras.innerHTML = extras.length ? extras.map((x, i) => `
+      <div class="fila-tarifa" data-indice-extra="${i}">
+        <input class="t-nombre" maxlength="60" placeholder="Nombre (ej. Jacuzzi)" value="${escapar(x.nombre)}">
+        <input class="t-precio" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Q 0.00" value="${x.precio}">
+        <button type="button" class="boton peligro mini x-quitar" title="Quitar extra">${icono('x', 13)}</button>
+      </div>`).join('')
+      : '<div class="ayuda suave">Esta habitación no ofrece extras.</div>';
+
+    contenedorExtras.querySelectorAll('[data-indice-extra]').forEach((fila) => {
+      const i = Number(fila.dataset.indiceExtra);
+      fila.querySelector('.t-nombre').addEventListener('input', (e) => { extras[i].nombre = e.target.value; });
+      fila.querySelector('.t-precio').addEventListener('input', (e) => { extras[i].precio = e.target.value; });
+      fila.querySelector('.x-quitar').addEventListener('click', () => {
+        extras.splice(i, 1);
+        dibujarExtras();
+      });
+    });
+  };
+  dibujarExtras();
+
+  document.getElementById('mh-agregar-extra').addEventListener('click', () => {
+    if (extras.length >= 8) return aviso('Máximo 8 extras por habitación', true);
+    extras.push({ nombre: '', precio: '' });
+    dibujarExtras();
+    const filas = contenedorExtras.querySelectorAll('.fila-tarifa');
+    const ultima = filas[filas.length - 1];
+    if (ultima) ultima.querySelector('.t-nombre').focus();
+  });
+
   document.getElementById('mh-cancelar').addEventListener('click', cerrarModal);
   document.getElementById('mh-guardar').addEventListener('click', async () => {
     const datos = {
@@ -686,6 +730,10 @@ function modalHabitacion(habitacion) {
         nombre: String(t.nombre || '').trim(),
         horas: Number(t.horas),
         precio: Number(t.precio || 0)
+      })),
+      extras: extras.map((x) => ({
+        nombre: String(x.nombre || '').trim(),
+        precio: Number(x.precio || 0)
       }))
     };
     let respuesta;

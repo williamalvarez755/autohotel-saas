@@ -1060,6 +1060,12 @@ html[data-tema="claro"] .grupo-opciones .opcion.activa { color: var(--primario-h
   color: var(--morado);
 }
 .chip-tarifa.noche strong { color: var(--morado); }
+.chip-tarifa.extra {
+  background: var(--acento-tinta);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: var(--acento-texto);
+}
+.chip-tarifa.extra strong { color: var(--acento-texto); }
 .chip-tarifa.vacia { opacity: 0.6; }
 
 .editor-tarifas { display: flex; flex-direction: column; gap: 8px; }

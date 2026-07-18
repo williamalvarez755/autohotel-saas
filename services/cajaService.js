@@ -289,6 +289,29 @@ async function retirosCajaAbierta(hotelId) {
   return { turno_id: turnoId, retiros: await listarRetiros(pool, turnoId) };
 }
 
+/**
+ * Historial de gastos/retiros del hotel (auditoría del dueño),
+ * con rango de fechas opcional. Incluye los retiros de cierre.
+ */
+async function gastosDelHotel(hotelId, desde, hasta) {
+  const inicio = desde ? `${desde} 00:00:00` : '1970-01-01 00:00:00';
+  const fin = hasta ? `${hasta} 23:59:59` : '2999-12-31 23:59:59';
+  const [filas] = await pool.query(
+    `SELECT r.id, r.turno_id, r.tipo, r.monto, r.justificacion, r.nota, r.fecha,
+            u.nombre AS usuario_nombre
+       FROM retiros_caja r
+       JOIN usuarios u ON u.id = r.usuario_id
+      WHERE r.hotel_id = ? AND r.fecha BETWEEN ? AND ?
+      ORDER BY r.fecha DESC, r.id DESC
+      LIMIT 500`,
+    [hotelId, inicio, fin]
+  );
+  const total = filas
+    .filter((r) => r.tipo === 'gasto')
+    .reduce((suma, r) => sumar(suma, r.monto), 0);
+  return { retiros: filas, total_gastos: total };
+}
+
 /** Notas/retiros de un turno del hotel (auditoría del dueño). */
 async function notasDeTurno(hotelId, turnoId) {
   const [turnos] = await pool.query(
@@ -301,5 +324,5 @@ async function notasDeTurno(hotelId, turnoId) {
 
 module.exports = {
   turnoAbiertoId, estado, abrir, retirar, cerrar,
-  historial, retirosCajaAbierta, notasDeTurno
+  historial, retirosCajaAbierta, notasDeTurno, gastosDelHotel
 };

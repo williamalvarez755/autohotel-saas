@@ -21,13 +21,23 @@ function validarPago(cuerpo, obligatorio) {
 
 async function registrarEntrada(req, res) {
   const cuerpo = req.body || {};
+  // Extras opcionales elegidos (ids del menú de la habitación)
+  let extras = [];
+  if (cuerpo.extras !== undefined && cuerpo.extras !== null) {
+    if (!Array.isArray(cuerpo.extras) || cuerpo.extras.length > LIMITES.MAX_EXTRAS_POR_HABITACION) {
+      throw new ErrorNegocio('Los extras deben ser una lista de identificadores válida');
+    }
+    extras = [...new Set(cuerpo.extras.map((id) => v.idValido(id, 'extra')))];
+  }
+
   const datos = {
     habitacion_id: v.idValido(cuerpo.habitacion_id, 'habitacion_id'),
     // Opcional: hay clientes que llegan a pie (sin vehículo)
     placa: v.textoOpcional(cuerpo.placa, 'placa del vehículo', 20).toUpperCase(),
     tipo: v.opcionValida(cuerpo.tipo, 'tipo de servicio', Object.values(TIPOS_ESTANCIA)),
     tarifa_id: null,
-    reserva_id: cuerpo.reserva_id ? v.idValido(cuerpo.reserva_id, 'reserva_id') : null
+    reserva_id: cuerpo.reserva_id ? v.idValido(cuerpo.reserva_id, 'reserva_id') : null,
+    extras
   };
   // La entrada por tiempo exige elegir una tarifa de la habitación;
   // el precio y la duración los dicta la tarifa en el backend.

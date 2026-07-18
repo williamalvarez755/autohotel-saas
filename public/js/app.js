@@ -127,6 +127,7 @@ const SECCIONES = [
   { id: 'limpieza',     icono: 'limpieza',   texto: 'Limpieza',     soloDueno: false, grupo: 'Operación' },
   { id: 'reservas',     icono: 'calendario', texto: 'Reservas',     soloDueno: false, grupo: 'Operación' },
   { id: 'inventario',   icono: 'paquete',    texto: 'Inventario',   soloDueno: false, grupo: 'Gestión' },
+  { id: 'gastos',       icono: 'recibo',     texto: 'Gastos',       soloDueno: false, grupo: 'Gestión' },
   { id: 'reportes',     icono: 'grafica',    texto: 'Reportes',     soloDueno: true,  grupo: 'Gestión' },
   { id: 'caja',         icono: 'caja',       texto: 'Cajas',        soloDueno: true,  grupo: 'Gestión' },
   { id: 'usuarios',     icono: 'usuarios',   texto: 'Usuarios',     soloDueno: true,  grupo: 'Gestión' },
@@ -177,6 +178,7 @@ const CARGADORES = {
   limpieza: cargarLimpieza,
   reservas: cargarReservas,
   inventario: cargarInventario,
+  gastos: cargarGastos,
   reportes: cargarReportes,
   caja: cargarCajas,
   usuarios: cargarUsuarios,
@@ -275,11 +277,16 @@ function dibujarTablero() {
         .slice(0, 3)
         .map((t) => `<span class="chip-tarifa">${t.horas}h · <strong>${formatoQ(t.precio)}</strong></span>`)
         .join('');
+      const chipsExtras = (h.extras || [])
+        .slice(0, 2)
+        .map((x) => `<span class="chip-tarifa extra">＋ ${escapar(x.nombre)} <strong>${formatoQ(x.precio)}</strong></span>`)
+        .join('');
       cuerpo = `
         <div class="detalle-hab">
           <div class="chips-tarifas">
             ${chipsTarifas || '<span class="chip-tarifa vacia">Sin tarifas</span>'}
             <span class="chip-tarifa noche">${icono('luna', 12)} <strong>${formatoQ(h.precio_noche)}</strong></span>
+            ${chipsExtras}
           </div>
         </div>`;
       accion = 'Registrar entrada';

@@ -773,6 +773,102 @@ async function principal() {
   const retiroSinCaja = await llamar('pedro', 'POST', '/caja/retiros', { monto: 5, justificacion: 'sin caja' });
   probar('Sin caja abierta no hay retiros (409)', retiroSinCaja.status === 409);
 
+  console.log('\n=== P. Extras opcionales por habitación + módulo de gastos ===');
+  // Extras del seed: el tablero los expone por habitación
+  let tableroP = await llamar('carlos', 'GET', '/habitaciones');
+  const h04 = tableroP.data.habitaciones.find((h) => h.id === 4);
+  const h01P = tableroP.data.habitaciones.find((h) => h.id === 1);
+  probar('El tablero expone los extras del seed (H-04 con Jacuzzi Q40)',
+    h04 && h04.extras.some((x) => x.nombre === 'Jacuzzi' && Number(x.precio) === 40));
+  probar('Las habitaciones sin extras devuelven lista vacía (el dueño elige cuáles)',
+    h01P && Array.isArray(h01P.extras) && h01P.extras.length === 0);
+
+  // El dueño configura extras en una habitación libre vía edición
+  const adminP = await llamar('carlos', 'GET', '/habitaciones/admin');
+  const libreP = tableroP.data.habitaciones.find((h) =>
+    h.estado === 'disponible' && h.tarifas.length && !h.extras.length);
+  probar('Hay habitación libre sin extras para configurar', Boolean(libreP));
+  const fichaP = adminP.data.find((h) => h.id === libreP.id);
+  const datosBaseP = {
+    nombre: fichaP.nombre, precio_noche: fichaP.precio_noche,
+    precio_hora_extra: fichaP.precio_hora_extra, activo: 1,
+    tarifas: fichaP.tarifas.map((t) => ({ nombre: t.nombre, horas: t.horas, precio: t.precio }))
+  };
+  const agregarExtra = await llamar('carlos', 'PUT', `/habitaciones/${libreP.id}`, {
+    ...datosBaseP, extras: [{ nombre: 'Jacuzzi', precio: 40 }, { nombre: 'Decoración', precio: 60 }]
+  });
+  probar('El dueño agrega extras a la habitación', agregarExtra.success);
+
+  const extraDuplicado = await llamar('carlos', 'PUT', `/habitaciones/${libreP.id}`, {
+    ...datosBaseP, extras: [{ nombre: 'Jacuzzi', precio: 40 }, { nombre: 'jacuzzi', precio: 50 }]
+  });
+  probar('Extras con nombre repetido se rechazan (400)', extraDuplicado.status === 400);
+  const extraGratis = await llamar('carlos', 'PUT', `/habitaciones/${libreP.id}`, {
+    ...datosBaseP, extras: [{ nombre: 'Gratis', precio: 0 }]
+  });
+  probar('Extra con precio cero se rechaza (400)', extraGratis.status === 400);
+  const extrasExceso = await llamar('carlos', 'PUT', `/habitaciones/${libreP.id}`, {
+    ...datosBaseP, extras: Array.from({ length: 9 }, (_, i) => ({ nombre: 'X' + i, precio: 10 }))
+  });
+  probar('Más de 8 extras se rechazan (400)', extrasExceso.status === 400);
+
+  tableroP = await llamar('carlos', 'GET', '/habitaciones');
+  const conExtrasP = tableroP.data.habitaciones.find((h) => h.id === libreP.id);
+  probar('El tablero refleja los 2 extras configurados', conExtrasP.extras.length === 2);
+  const jacuzziP = conExtrasP.extras.find((x) => x.nombre === 'Jacuzzi');
+
+  // Entrada con extra elegido: el cargo se fotografía y se cobra
+  const tarifaP = conExtrasP.tarifas[0];
+  const entradaP = await llamar('carlos', 'POST', '/estancias', {
+    habitacion_id: libreP.id, tipo: 'horas', tarifa_id: tarifaP.id, extras: [jacuzziP.id]
+  });
+  const totalP = Math.round((Number(tarifaP.precio) + 40) * 100) / 100;
+  probar('Entrada con extra: total = tarifa + Q40 y descripción "Jacuzzi"',
+    entradaP.success && Number(entradaP.data.cargo_extra) === 40
+    && entradaP.data.cargo_descripcion === 'Jacuzzi'
+    && Number(entradaP.data.total_cobro_base) === totalP);
+
+  // Anti-IDOR: un extra de OTRA habitación no aplica
+  const otraLibreP = tableroP.data.habitaciones.find((h) =>
+    h.estado === 'disponible' && h.tarifas.length && h.id !== libreP.id);
+  const extraAjeno = await llamar('carlos', 'POST', '/estancias', {
+    habitacion_id: otraLibreP.id, tipo: 'horas',
+    tarifa_id: otraLibreP.tarifas[0].id, extras: [jacuzziP.id]
+  });
+  probar('AISLAMIENTO: extra de otra habitación → 404', extraAjeno.status === 404);
+
+  // El cobro y la salida cuadran con el extra incluido
+  const pagoP = await llamar('carlos', 'POST', `/estancias/${entradaP.data.id}/pago-base`, {
+    metodo: 'efectivo', efectivo_recibido: totalP
+  });
+  probar('El cobro base exige tarifa + extra (cambio Q0)', pagoP.success && Number(pagoP.data.total) === totalP);
+  const salidaP = await llamar('carlos', 'POST', `/estancias/${entradaP.data.id}/salida`, {});
+  probar('La salida cierra con total final = tarifa + extra', salidaP.success && Number(salidaP.data.total_final) === totalP);
+  const [cobrosP] = await bd.query(
+    'SELECT COALESCE(SUM(monto_total), 0) AS suma FROM cobros WHERE estancia_id = ?', [entradaP.data.id]);
+  probar('El libro de cobros cuadra con el extra incluido', Number(cobrosP[0].suma) === totalP);
+  await llamar('carlos', 'POST', `/habitaciones/${libreP.id}/limpia`);
+
+  // El dueño puede QUITAR los extras (elige qué habitación los tiene)
+  const quitarExtras = await llamar('carlos', 'PUT', `/habitaciones/${libreP.id}`, {
+    ...datosBaseP, extras: []
+  });
+  tableroP = await llamar('carlos', 'GET', '/habitaciones');
+  probar('El dueño quita los extras y el tablero queda limpio',
+    quitarExtras.success
+    && tableroP.data.habitaciones.find((h) => h.id === libreP.id).extras.length === 0);
+
+  // Módulo de gastos: historial del dueño (los gastos de la sección O)
+  const gastosDueno = await llamar('carlos', 'GET', '/caja/gastos');
+  probar('Historial de gastos del dueño: 4 retiros y total sin cierres Q85.50',
+    gastosDueno.success && gastosDueno.data.retiros.length === 4
+    && Number(gastosDueno.data.total_gastos) === 85.5);
+  const gastosFuturos = await llamar('carlos', 'GET', '/caja/gastos?desde=2030-01-01&hasta=2030-12-31');
+  probar('El filtro de fechas del historial funciona (rango vacío)',
+    gastosFuturos.success && gastosFuturos.data.retiros.length === 0);
+  const gastosTrabajador = await llamar('pedro', 'GET', '/caja/gastos');
+  probar('El trabajador NO accede al historial de gastos (403)', gastosTrabajador.status === 403);
+
   await bd.end();
 
   console.log('\n============================================');

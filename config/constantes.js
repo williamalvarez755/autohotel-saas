@@ -62,6 +62,8 @@ const LIMITES = {
   MAX_MONTO: 1000000,
   // Motor de tarifas: paquetes precio/tiempo por habitación
   MAX_TARIFAS_POR_HABITACION: 8,
+  // Extras opcionales por habitación (ej. jacuzzi)
+  MAX_EXTRAS_POR_HABITACION: 8,
   // Costo de calcular hashes bcrypt (compartido por todos los servicios)
   RONDAS_BCRYPT: 10,
   // Rate limit del login: intentos por ventana de tiempo

@@ -34,6 +34,23 @@ async function tarifasPorHabitacion(hotelId) {
   return mapa;
 }
 
+/** Extras opcionales (ej. jacuzzi) agrupados por habitación. */
+async function extrasPorHabitacion(hotelId) {
+  const [filas] = await pool.query(
+    `SELECT id, habitacion_id, nombre, precio
+       FROM extras_habitacion
+      WHERE hotel_id = ?
+      ORDER BY habitacion_id, precio, nombre`,
+    [hotelId]
+  );
+  const mapa = new Map();
+  for (const e of filas) {
+    if (!mapa.has(e.habitacion_id)) mapa.set(e.habitacion_id, []);
+    mapa.get(e.habitacion_id).push({ id: e.id, nombre: e.nombre, precio: e.precio });
+  }
+  return mapa;
+}
+
 /**
  * Tablero de habitaciones del hotel con la información viva:
  * estancia activa (si está ocupada), reserva pendiente (si está
@@ -65,10 +82,12 @@ async function tablero(hotelId) {
   );
 
   const tarifas = await tarifasPorHabitacion(hotelId);
+  const extras = await extrasPorHabitacion(hotelId);
   const ahoraEpoch = Date.now();
   const habitaciones = filas.map((f) => ({
     ...f,
     tarifas: tarifas.get(f.id) || [],
+    extras: extras.get(f.id) || [],
     entrada_epoch: aEpoch(f.hora_entrada),
     salida_prevista_epoch: aEpoch(f.hora_salida_prevista),
     reserva_epoch: aEpoch(f.reserva_fecha_hora),
@@ -90,7 +109,12 @@ async function listarAdmin(hotelId) {
     [hotelId]
   );
   const tarifas = await tarifasPorHabitacion(hotelId);
-  return filas.map((f) => ({ ...f, tarifas: tarifas.get(f.id) || [] }));
+  const extras = await extrasPorHabitacion(hotelId);
+  return filas.map((f) => ({
+    ...f,
+    tarifas: tarifas.get(f.id) || [],
+    extras: extras.get(f.id) || []
+  }));
 }
 
 /** Reemplaza el menú de tarifas de una habitación (dentro de transacción). */
@@ -100,6 +124,21 @@ async function reemplazarTarifas(cx, hotelId, habitacionId, tarifas) {
   const valores = tarifas.map((t) => [hotelId, habitacionId, t.nombre, t.horas, t.precio]);
   await cx.query(
     'INSERT INTO tarifas (hotel_id, habitacion_id, nombre, horas, precio) VALUES ?',
+    [valores]
+  );
+}
+
+/**
+ * Reemplaza los extras opcionales de una habitación (transacción).
+ * Mismo patrón que las tarifas: reemplazo total, sin estados a
+ * medias; las estancias en curso no se afectan (foto en cargo_extra).
+ */
+async function reemplazarExtras(cx, hotelId, habitacionId, extras) {
+  await cx.query('DELETE FROM extras_habitacion WHERE habitacion_id = ? AND hotel_id = ?', [habitacionId, hotelId]);
+  if (!extras.length) return;
+  const valores = extras.map((e) => [hotelId, habitacionId, e.nombre, e.precio]);
+  await cx.query(
+    'INSERT INTO extras_habitacion (hotel_id, habitacion_id, nombre, precio) VALUES ?',
     [valores]
   );
 }
@@ -120,6 +159,7 @@ async function crear(hotelId, datos) {
       [hotelId, datos.nombre, datos.precio_noche, datos.precio_hora_extra]
     );
     await reemplazarTarifas(cx, hotelId, resultado.insertId, datos.tarifas);
+    await reemplazarExtras(cx, hotelId, resultado.insertId, datos.extras);
     return { id: resultado.insertId };
   });
 }
@@ -161,8 +201,9 @@ async function editar(hotelId, habitacionId, datos) {
       [datos.nombre, datos.precio_noche, datos.precio_hora_extra, datos.activo, habitacionId, hotelId]
     );
     // Las estancias en curso o históricas no se ven afectadas: cada
-    // estancia guarda su propia foto de tarifa y precio de hora extra.
+    // estancia guarda su propia foto de tarifa, hora extra y extras.
     await reemplazarTarifas(cx, hotelId, habitacionId, datos.tarifas);
+    await reemplazarExtras(cx, hotelId, habitacionId, datos.extras);
     return { id: habitacionId };
   });
 }

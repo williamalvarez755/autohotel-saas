@@ -44,6 +44,16 @@ async function retiros(req, res) {
   return ok(res, datos);
 }
 
+/** Historial de gastos del hotel con rango de fechas (dueño). */
+async function gastos(req, res) {
+  const query = req.query || {};
+  const esFecha = (t) => /^\d{4}-\d{2}-\d{2}$/.test(t);
+  if (query.desde && !esFecha(query.desde)) throw new ErrorNegocio('La fecha "desde" debe ser AAAA-MM-DD');
+  if (query.hasta && !esFecha(query.hasta)) throw new ErrorNegocio('La fecha "hasta" debe ser AAAA-MM-DD');
+  const datos = await cajaService.gastosDelHotel(req.hotelId, query.desde, query.hasta);
+  return ok(res, datos);
+}
+
 /** Notas de un turno del historial (auditoría del dueño). */
 async function notasDeTurno(req, res) {
   const turnoId = v.idValido(req.params.id, 'turno');
@@ -56,4 +66,4 @@ async function historial(req, res) {
   return ok(res, datos);
 }
 
-module.exports = { estado, abrir, cerrar, retirar, retiros, notasDeTurno, historial };
+module.exports = { estado, abrir, cerrar, retirar, retiros, gastos, notasDeTurno, historial };

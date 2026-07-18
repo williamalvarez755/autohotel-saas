@@ -135,8 +135,10 @@ async function modalCaja() {
 /**
  * Retiro de efectivo (gasto operativo o retiro del dueño): exige
  * monto y justificación, y muestra en vivo la nota que se generará.
+ * alTerminar (opcional): qué refrescar al guardar; por defecto
+ * vuelve al detalle de la caja.
  */
-function modalRetiro(caja) {
+function modalRetiro(caja, alTerminar) {
   abrirModal({
     titulo: 'Retiro de efectivo / gasto',
     cuerpo: `
@@ -177,8 +179,111 @@ function modalRetiro(caja) {
     aviso('Nota guardada: ' + respuesta.data.nota);
     cerrarModal();
     await cargarEstadoCaja();
-    modalCaja(); // vuelve al detalle de la caja con el nuevo saldo
+    if (alTerminar) alTerminar();
+    else modalCaja(); // vuelve al detalle de la caja con el nuevo saldo
   });
+}
+
+// ============================================================
+// Sección GASTOS (grupo Gestión): registrar gastos del turno y,
+// para el dueño, el historial completo con rango de fechas.
+// ============================================================
+async function cargarGastos() {
+  await cargarEstadoCaja();
+  const seccion = document.getElementById('seccion-gastos');
+
+  // --- Panel del turno actual (dueño y trabajador) ---
+  let panelTurno;
+  if (App.caja) {
+    const notas = (App.caja.retiros || []);
+    panelTurno = `
+      <div class="panel">
+        <div class="fila-flex" style="justify-content:space-between;margin-bottom:12px">
+          <h3 style="margin-bottom:0">Turno actual · efectivo en caja ${formatoQ(App.caja.efectivo_esperado)}</h3>
+          <button class="boton" id="ga-registrar">${icono('mas', 15)} Registrar gasto</button>
+        </div>
+        ${notas.length ? `
+        <div class="envoltura-tabla"><table class="tabla">
+          <thead><tr><th>Nota</th><th class="derecha">Monto</th><th>Hizo</th><th>Hora</th></tr></thead>
+          <tbody>${notas.map((r) => `
+            <tr>
+              <td>${escapar(r.nota)}</td>
+              <td class="derecha monto">− ${formatoQ(r.monto)}</td>
+              <td class="suave">${escapar(r.usuario_nombre)}</td>
+              <td class="suave">${formatoHora(r.fecha)}</td>
+            </tr>`).join('')}
+          </tbody></table></div>`
+        : `<div class="vacio" style="padding:18px"><span class="ico">${icono('recibo', 24)}</span>Sin gastos en este turno</div>`}
+      </div>`;
+  } else {
+    panelTurno = `
+      <div class="panel">
+        <div class="vacio" style="padding:22px">
+          <span class="ico">${icono('caja', 26)}</span>
+          No hay caja abierta: los gastos salen de la caja del turno.
+          <div style="margin-top:12px"><button class="boton" id="ga-abrir">Abrir caja</button></div>
+        </div>
+      </div>`;
+  }
+
+  seccion.innerHTML = `
+    <div class="encabezado-seccion">
+      <div>
+        <h2>Gastos</h2>
+        <div class="sub">Retiros de efectivo con su justificación y nota automática</div>
+      </div>
+    </div>
+    ${panelTurno}
+    ${App.esDueno ? `
+    <div class="panel">
+      <h3>Historial de gastos</h3>
+      <div class="fila-flex" style="align-items:flex-end;margin-bottom:12px">
+        <div class="campo" style="margin-bottom:0"><label>Desde</label>
+          <input type="date" id="ga-desde" value="${hoyLocal().slice(0, 8)}01"></div>
+        <div class="campo" style="margin-bottom:0"><label>Hasta</label>
+          <input type="date" id="ga-hasta" value="${hoyLocal()}"></div>
+        <button class="boton secundario" id="ga-filtrar">${icono('lupa', 15)} Ver</button>
+      </div>
+      <div id="ga-historial"></div>
+    </div>` : ''}`;
+
+  const botonRegistrar = document.getElementById('ga-registrar');
+  if (botonRegistrar) {
+    botonRegistrar.addEventListener('click', () => modalRetiro(App.caja, cargarGastos));
+  }
+  const botonAbrir = document.getElementById('ga-abrir');
+  if (botonAbrir) botonAbrir.addEventListener('click', modalAbrirCaja);
+
+  if (App.esDueno) {
+    const cargarHistorialGastos = async () => {
+      const desde = document.getElementById('ga-desde').value;
+      const hasta = document.getElementById('ga-hasta').value;
+      const r = await api(`/caja/gastos?desde=${desde}&hasta=${hasta}`);
+      const zona = document.getElementById('ga-historial');
+      if (!r.success) return avisoRespuesta(r);
+      zona.innerHTML = r.data.retiros.length ? `
+        <div class="envoltura-tabla"><table class="tabla">
+          <thead><tr><th>Nota</th><th>Tipo</th><th class="derecha">Monto</th><th>Hizo</th><th>Fecha</th><th>Turno</th></tr></thead>
+          <tbody>${r.data.retiros.map((g) => `
+            <tr>
+              <td>${escapar(g.nota)}</td>
+              <td>${g.tipo === 'cierre'
+                ? '<span class="etiqueta azul">Cierre</span>'
+                : '<span class="etiqueta amarilla">Gasto</span>'}</td>
+              <td class="derecha monto">${formatoQ(g.monto)}</td>
+              <td class="suave">${escapar(g.usuario_nombre)}</td>
+              <td class="suave" style="white-space:nowrap">${formatoFechaHora(g.fecha)}</td>
+              <td class="suave">#${g.turno_id}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tr class="total"><td colspan="2">Total gastos del rango (sin cierres)</td>
+            <td class="derecha monto">${formatoQ(r.data.total_gastos)}</td><td colspan="3"></td></tr>
+        </table></div>`
+        : `<div class="vacio" style="padding:18px"><span class="ico">${icono('recibo', 24)}</span>Sin gastos en el rango</div>`;
+    };
+    document.getElementById('ga-filtrar').addEventListener('click', cargarHistorialGastos);
+    cargarHistorialGastos();
+  }
 }
 
 /** Modal de arqueo: declarar efectivo físico, ver descuadre y cerrar. */

@@ -25,6 +25,7 @@ DROP TABLE IF EXISTS pedidos;
 DROP TABLE IF EXISTS movimientos_inventario;
 DROP TABLE IF EXISTS reservas;
 DROP TABLE IF EXISTS estancias;
+DROP TABLE IF EXISTS extras_habitacion;
 DROP TABLE IF EXISTS tarifas;
 DROP TABLE IF EXISTS productos;
 DROP TABLE IF EXISTS habitaciones;
@@ -205,6 +206,27 @@ CREATE TABLE tarifas (
   KEY idx_tarifas_habitacion (habitacion_id, horas),
   CONSTRAINT fk_tarifas_hotel FOREIGN KEY (hotel_id) REFERENCES hoteles (id),
   CONSTRAINT fk_tarifas_habitacion FOREIGN KEY (habitacion_id) REFERENCES habitaciones (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- EXTRAS OPCIONALES POR HABITACIÓN (ej. jacuzzi +Q40)
+-- El dueño define qué habitaciones ofrecen extras y su precio;
+-- el recepcionista los activa (o no) al registrar la entrada.
+-- Se administran junto con la habitación (reemplazo total, igual
+-- que las tarifas); el precio elegido se FOTOGRAFÍA en la
+-- estancia dentro de cargo_extra / cargo_descripcion.
+-- ------------------------------------------------------------
+CREATE TABLE extras_habitacion (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  hotel_id      INT UNSIGNED NOT NULL,
+  habitacion_id INT UNSIGNED NOT NULL,
+  nombre        VARCHAR(60) NOT NULL,
+  precio        DECIMAL(10,2) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_extras_habitacion_nombre (habitacion_id, nombre),
+  KEY idx_extras_hotel (hotel_id),
+  CONSTRAINT fk_extras_hotel FOREIGN KEY (hotel_id) REFERENCES hoteles (id),
+  CONSTRAINT fk_extras_habitacion FOREIGN KEY (habitacion_id) REFERENCES habitaciones (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------

@@ -4,6 +4,23 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-18 · v2.8 — Módulo Gastos + extras opcionales por habitación
+
+**Suite e2e: 171 → 188 pruebas.**
+
+### Sección "Gastos" (grupo Gestión)
+Nueva sección en el panel operativo (dueño y trabajador): registrar gastos del turno (mismo `modalRetiro` con nota automática) y ver la tabla de retiros de la caja abierta. El dueño además tiene el **historial completo de gastos** con rango de fechas y total (excluye retiros de cierre) — `GET /caja/gastos` (solo dueño).
+
+### Extras opcionales por habitación (ej. jacuzzi +Q40)
+El dueño elige QUÉ habitaciones ofrecen extras y su precio; el recepcionista los activa con botones al registrar la entrada.
+
+- **BD**: tabla `extras_habitacion` (mismo patrón que `tarifas`: única por habitación+nombre, CASCADE, reemplazo total en transacción). Migración `db/migracion_extras.sql` aplicada en local y Aiven; seed con jacuzzis en superiores/suites.
+- **Backend**: `POST/PUT /habitaciones` aceptan `extras` (0–8, nombre único, precio > 0); tablero y admin los exponen por habitación. `POST /estancias` acepta `extras: [ids]` con validación anti-IDOR (extra de otra habitación → 404); la suma y los nombres se **pliegan en `cargo_extra`/`cargo_descripcion`** (foto) — así reutilizan TODA la tubería de dinero existente (cobro base, desglose, salida, cobros, reportes) sin rutas nuevas de dinero.
+- **Frontend**: chips "＋ Jacuzzi Q40" en la tarjeta disponible; en la entrada, sección "Extras opcionales" con botones de **selección múltiple** (prender/apagar) y línea de desglose + total en vivo (verificado: Q125 + Jacuzzi = Q165). Editor de extras en la administración de habitaciones (igual al de tarifas, puede quedar vacío). Etiqueta "Cargo de reserva" → "Cargos adicionales" en cobro/estancia/salida (ahora puede incluir extras).
+- **Fix de paso**: la purga de dueños (`eliminarDueno`) no borraba `turnos_caja`/`retiros_caja` (FK habría fallado con historial de cajas); corregido.
+
+Archivos: `db/{schema,seed,migracion_extras}.sql`, `config/constantes.js`, `services/{habitaciones,estancias,caja,superadmin}Service.js`, `controllers/{habitaciones,estancias,caja}Controller.js`, `routes/index.js`, `public/app.html`, `public/js/{app,caja,operaciones,administracion}.js`, `public/css/estilos.css`, `test/e2e.js` (sección P, 17 pruebas). Verificado en navegador: sección Gastos completa (abrir caja → gasto Q45 con nota → historial), toggle de jacuzzi en entrada con desglose, editor del dueño con los extras de Suite 1.
+
 ## 2026-07-18 · v2.7 — Retiros de caja, gastos operativos y notas automáticas
 
 **Suite e2e: 150 → 171 pruebas.** Completa el módulo de caja (v2.5) con la parte de gastos. Regla cero respetada: la fórmula anterior solo se EXTIENDE (antes no existían retiros, así que los cierres viejos no cambian de significado).

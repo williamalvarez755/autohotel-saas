@@ -90,6 +90,7 @@ router.post('/caja/cerrar', operacion, e(cajaController.cerrar));
 router.post('/caja/retiros', operacion, e(cajaController.retirar));
 router.get('/caja/retiros', operacion, e(cajaController.retiros));
 router.get('/caja/historial', soloDueno, e(cajaController.historial));
+router.get('/caja/gastos', soloDueno, e(cajaController.gastos));
 router.get('/caja/:id/retiros', soloDueno, e(cajaController.notasDeTurno));
 
 // ---------------- Alertas ----------------

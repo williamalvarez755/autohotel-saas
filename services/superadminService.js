@@ -229,7 +229,10 @@ async function eliminarDueno(duenoId, confirmarUsuario) {
       await cx.query('DELETE FROM pedidos WHERE hotel_id IN (?)', [hotelIds]);
       await cx.query('DELETE FROM movimientos_inventario WHERE hotel_id IN (?)', [hotelIds]);
       await cx.query('DELETE FROM reservas WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM retiros_caja WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM turnos_caja WHERE hotel_id IN (?)', [hotelIds]);
       await cx.query('DELETE FROM estancias WHERE hotel_id IN (?)', [hotelIds]);
+      await cx.query('DELETE FROM extras_habitacion WHERE hotel_id IN (?)', [hotelIds]);
       await cx.query('DELETE FROM tarifas WHERE hotel_id IN (?)', [hotelIds]);
       await cx.query('DELETE FROM productos WHERE hotel_id IN (?)', [hotelIds]);
       await cx.query('DELETE FROM habitaciones WHERE hotel_id IN (?)', [hotelIds]);
@@ -369,6 +372,7 @@ async function eliminarHotel(hotelId) {
     }
 
     // Limpio: borra la estructura y el hotel
+    await cx.query('DELETE FROM extras_habitacion WHERE hotel_id = ?', [hotelId]);
     await cx.query('DELETE FROM tarifas WHERE hotel_id = ?', [hotelId]);
     await cx.query('DELETE FROM productos WHERE hotel_id = ?', [hotelId]);
     await cx.query('DELETE FROM habitaciones WHERE hotel_id = ?', [hotelId]);

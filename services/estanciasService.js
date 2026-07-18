@@ -111,10 +111,30 @@ async function registrarEntrada(hotel, usuarioId, datos) {
     const horaSalidaPrevista = sumarHoras(horaEntrada, horasContratadas);
     const precioHoraExtra = redondear(habitacion.precio_hora_extra);
 
-    // Foto del recargo de la reserva (recargo por reservar + extras como
-    // decoración): queda pactado en la estancia y se cobra con el base.
-    const cargoExtra = reserva ? redondear(reserva.cargo_extra) : 0;
-    const cargoDescripcion = reserva ? reserva.cargo_descripcion : '';
+    // Extras opcionales elegidos (ej. jacuzzi): deben ser de ESTA
+    // habitación y ESTE hotel (un id ajeno = 404, anti-IDOR).
+    let totalExtras = 0;
+    let nombresExtras = [];
+    if (datos.extras && datos.extras.length) {
+      const [extrasElegidos] = await cx.query(
+        'SELECT id, nombre, precio FROM extras_habitacion WHERE id IN (?) AND habitacion_id = ? AND hotel_id = ?',
+        [datos.extras, habitacion.id, hotel.id]
+      );
+      if (extrasElegidos.length !== datos.extras.length) {
+        throw new ErrorNegocio('Un extra seleccionado no existe para esta habitación', 404);
+      }
+      totalExtras = extrasElegidos.reduce((suma, e) => sumar(suma, e.precio), 0);
+      nombresExtras = extrasElegidos.map((e) => e.nombre);
+    }
+
+    // Foto del cargo adicional: recargo de la reserva (si la hubo) +
+    // extras elegidos. Queda pactado en la estancia y se cobra con el
+    // base; cambios de precios posteriores no lo alteran.
+    const cargoExtra = redondear(sumar(reserva ? reserva.cargo_extra : 0, totalExtras));
+    const cargoDescripcion = [
+      reserva ? reserva.cargo_descripcion : '',
+      ...nombresExtras
+    ].filter(Boolean).join(' + ');
     const totalFinalInicial = sumar(totalBase, cargoExtra);
 
     const [resultado] = await cx.query(

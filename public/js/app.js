@@ -64,20 +64,19 @@ function ahoraServidor() {
     botonPassword.addEventListener('click', modalCambiarPassword);
   }
 
-  // Control de caja: el trabajador ve el botón de caja en la barra.
+  // Control de caja: dueño y trabajador la operan desde la barra.
   const botonCaja = document.getElementById('boton-caja');
-  if (botonCaja && !App.esDueno) {
+  if (botonCaja) {
     botonCaja.addEventListener('click', () => (App.caja ? modalCaja() : modalAbrirCaja()));
   }
 
   mostrarSeccion(App.esDueno ? 'dashboard' : 'tablero');
   await refrescarAlertas();
 
-  // El trabajador que entra sin caja abierta debe abrirla para operar.
-  if (!App.esDueno) {
-    await cargarEstadoCaja();
-    if (!App.caja) modalAbrirCaja();
-  }
+  // Ambos roles ven el estado de la caja; solo al trabajador se le
+  // exige abrirla para poder operar (el dueño está exento).
+  await cargarEstadoCaja();
+  if (!App.esDueno && !App.caja) modalAbrirCaja();
 
   App.intervaloPolling = setInterval(cicloPolling, INTERVALO_POLLING_MS);
   App.intervaloTicker = setInterval(actualizarContadores, 1000);
@@ -87,7 +86,7 @@ function ahoraServidor() {
 async function cicloPolling() {
   if (document.hidden) return;
   await refrescarAlertas();
-  if (!App.esDueno) await cargarEstadoCaja();
+  await cargarEstadoCaja();
   if (App.seccion === 'tablero') await cargarTablero();
   if (App.seccion === 'dashboard') await cargarDashboard();
   if (App.seccion === 'estancias') await cargarEstancias();

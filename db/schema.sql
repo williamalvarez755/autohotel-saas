@@ -19,6 +19,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS auditoria;
 DROP TABLE IF EXISTS politicas_retencion;
 DROP TABLE IF EXISTS cobros;
+DROP TABLE IF EXISTS retiros_caja;
 DROP TABLE IF EXISTS turnos_caja;
 DROP TABLE IF EXISTS pedidos;
 DROP TABLE IF EXISTS movimientos_inventario;
@@ -369,6 +370,33 @@ CREATE TABLE turnos_caja (
   CONSTRAINT fk_turnos_hotel FOREIGN KEY (hotel_id) REFERENCES hoteles (id),
   CONSTRAINT fk_turnos_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id),
   CONSTRAINT fk_turnos_cerrado_por FOREIGN KEY (cerrado_por) REFERENCES usuarios (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------------------------
+-- RETIROS DE CAJA (gastos operativos y retiros del dueño)
+-- Cada salida de efectivo de una caja abierta exige monto y
+-- justificación, y guarda una NOTA autogenerada con formato
+-- estricto: "DD-MM-YYYY se retira [monto] para [justificación]".
+-- tipo 'cierre' = retiro del efectivo declarado al cerrar el
+-- turno ("DD-MM-YYYY se retira efectivo del hotel"); NO entra en
+-- la fórmula del descuadre (ocurre después del arqueo).
+-- ------------------------------------------------------------
+CREATE TABLE retiros_caja (
+  id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  hotel_id      INT UNSIGNED NOT NULL,
+  turno_id      INT UNSIGNED NOT NULL,
+  usuario_id    INT UNSIGNED NOT NULL,
+  tipo          ENUM('gasto','cierre') NOT NULL DEFAULT 'gasto',
+  monto         DECIMAL(10,2) NOT NULL,
+  justificacion VARCHAR(200) NOT NULL,
+  nota          VARCHAR(250) NOT NULL,
+  fecha         DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_retiros_turno (turno_id),
+  KEY idx_retiros_hotel_fecha (hotel_id, fecha),
+  CONSTRAINT fk_retiros_hotel FOREIGN KEY (hotel_id) REFERENCES hoteles (id),
+  CONSTRAINT fk_retiros_turno FOREIGN KEY (turno_id) REFERENCES turnos_caja (id),
+  CONSTRAINT fk_retiros_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ------------------------------------------------------------

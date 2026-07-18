@@ -85,6 +85,19 @@
 
 Campana con badge en la barra superior (polling 25 s) y lista completa en el dashboard del dueño.
 
+## Control de caja y gastos operativos
+
+- **Apertura**: si el hotel no tiene caja abierta, quien abra (dueño o trabajador) debe declarar el **monto inicial exacto** en efectivo (el "sencillo"). Solo puede existir **una caja abierta por hotel** (garantizado con índice UNIQUE en BD, no solo en la aplicación).
+- **Bloqueo operativo**: un **trabajador** no puede registrar cobros **en efectivo** (habitación o productos) sin caja abierta → HTTP 409 con mensaje claro. Las transferencias nunca se bloquean (no tocan el efectivo físico). El **dueño está exento** del bloqueo (decisión 35). El registro de la entrada en sí no exige caja: el dinero entra en el cobro.
+- **Retiros y gastos compartidos**: dueño Y trabajador pueden sacar efectivo de la caja activa. Requisitos: monto > 0 que no exceda el efectivo disponible, y **justificación obligatoria**.
+- **Notas automáticas**: cada retiro genera y guarda una nota inmutable con la fecha exacta del movimiento, formato estricto `DD-MM-YYYY se retira [monto] para [justificación]` (ej.: "17-07-2026 se retira 100 para desayuno trabajadores"). El retiro del efectivo al cerrar genera `DD-MM-YYYY se retira efectivo del hotel`.
+- **Cierre flexible**: lo puede hacer el trabajador o el jefe (dueño). Se declara el efectivo físico contado y el sistema calcula:
+  - `esperado = monto_inicial + ventas en efectivo del turno − retiros/gastos`
+  - `descuadre = declarado − esperado` (positivo = sobrante, negativo = faltante)
+  - Opcionalmente se registra el retiro del efectivo final con su nota (posterior al arqueo: no altera la fórmula).
+  - Al cerrar, el trabajador termina su turno (se cierra su sesión); el dueño continúa en el panel.
+- **Auditoría del dueño**: la sección "Cajas" muestra cada turno con fondo, retiros, esperado, declarado, arqueo (cuadra/sobrante/faltante) y las notas de retiros del turno.
+
 ## Usuarios y jerarquía
 
 - El dueño solo ve/crea/edita/desactiva trabajadores **suyos** (`dueno_id`) y solo puede asignarlos a **sus** hoteles.

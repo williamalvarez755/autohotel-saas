@@ -746,7 +746,7 @@ function modalCrearReserva(habitacionesDisponibles) {
 // ============================================================
 async function refrescarVistaOperativa() {
   refrescarAlertas();
-  if (!App.esDueno) await cargarEstadoCaja(); // el efectivo esperado cambió
+  await cargarEstadoCaja(); // el efectivo esperado cambió
   if (App.seccion === 'tablero') await cargarTablero();
   else if (App.seccion === 'estancias') await cargarEstancias();
   else if (App.seccion === 'limpieza') await cargarLimpieza();

@@ -687,6 +687,92 @@ async function principal() {
   // Limpieza del propietario de prueba creado en esta sección
   await llamar('admin', 'DELETE', `/superadmin/duenos/${propNuevo.data.id}`, { confirmar_usuario: 'prop.ficha' });
 
+  console.log('\n=== O. Retiros de caja, notas automáticas y cierre por el dueño ===');
+  // Abrir caja (pedro) con fondo Q200
+  const cajaO = await llamar('pedro', 'POST', '/caja/abrir', { monto_inicial: 200 });
+  probar('El trabajador abre caja con fondo Q200', cajaO.success);
+
+  const retiroSinJust = await llamar('pedro', 'POST', '/caja/retiros', { monto: 10 });
+  probar('Retiro sin justificación es rechazado (400)', retiroSinJust.status === 400);
+  const retiroCero = await llamar('pedro', 'POST', '/caja/retiros', { monto: 0, justificacion: 'x' });
+  probar('Retiro de monto cero es rechazado (400)', retiroCero.status === 400);
+  const retiroExcesivo = await llamar('pedro', 'POST', '/caja/retiros', { monto: 500, justificacion: 'excede' });
+  probar('No se puede retirar más del efectivo disponible (400)', retiroExcesivo.status === 400);
+
+  const retiro1 = await llamar('pedro', 'POST', '/caja/retiros', {
+    monto: 50, justificacion: 'desayuno trabajadores'
+  });
+  probar('Retiro del trabajador con justificación funciona', retiro1.success);
+  probar('NOTA con formato estricto "DD-MM-YYYY se retira 50 para desayuno trabajadores"',
+    /^\d{2}-\d{2}-\d{4} se retira 50 para desayuno trabajadores$/.test(retiro1.data.nota));
+  probar('El retiro devuelve el nuevo efectivo esperado (200 − 50 = 150)',
+    Number(retiro1.data.efectivo_esperado) === 150);
+
+  const retiro2 = await llamar('pedro', 'POST', '/caja/retiros', {
+    monto: 25.5, justificacion: 'compra de insumos'
+  });
+  probar('Nota con decimales usa dos cifras ("se retira 25.50 para…")',
+    retiro2.success && /se retira 25\.50 para compra de insumos$/.test(retiro2.data.nota));
+
+  // El DUEÑO también puede retirar de la misma caja activa
+  const retiroDueno = await llamar('carlos', 'POST', '/caja/retiros', {
+    monto: 10, justificacion: 'retiro del dueño'
+  });
+  probar('El dueño también retira de la caja activa (compartida)', retiroDueno.success);
+
+  const retirosLista = await llamar('pedro', 'GET', '/caja/retiros');
+  probar('La caja lista sus 3 retiros con notas', retirosLista.success && retirosLista.data.retiros.length === 3);
+
+  const estadoO = await llamar('pedro', 'GET', '/caja/estado');
+  probar('Estado: esperado = 200 − 50 − 25.50 − 10 = Q114.50',
+    Number(estadoO.data.abierta.total_retiros) === 85.5
+    && Number(estadoO.data.abierta.efectivo_esperado) === 114.5);
+
+  // Una venta en efectivo sube el esperado (fórmula completa)
+  const tableroO = await llamar('pedro', 'GET', '/habitaciones');
+  const libreO = tableroO.data.habitaciones.find((h) => h.estado === 'disponible' && h.tarifas.length);
+  probar('Hay habitación libre para la venta de la fórmula', Boolean(libreO));
+  const tarifaO = libreO.tarifas[0];
+  const entradaO = await llamar('pedro', 'POST', '/estancias', {
+    habitacion_id: libreO.id, placa: 'E2E-CAJA2', tipo: 'horas', tarifa_id: tarifaO.id
+  });
+  await llamar('pedro', 'POST', `/estancias/${entradaO.data.id}/pago-base`, {
+    metodo: 'efectivo', efectivo_recibido: 10000
+  });
+  const esperadoFormula = Math.round((200 + Number(tarifaO.precio) - 85.5) * 100) / 100;
+  const estadoO2 = await llamar('pedro', 'GET', '/caja/estado');
+  probar('Fórmula completa: (inicial + ventas efectivo) − retiros',
+    Number(estadoO2.data.abierta.efectivo_esperado) === esperadoFormula);
+
+  // Cierre por el DUEÑO con retiro del efectivo y nota automática
+  const cierreO = await llamar('carlos', 'POST', '/caja/cerrar', {
+    monto_declarado: esperadoFormula - 20, retirar_efectivo: true
+  });
+  probar('El DUEÑO cierra la caja (cierre flexible)', cierreO.success);
+  probar('monto_sistema respeta la fórmula y descuadre = −20',
+    Number(cierreO.data.monto_sistema) === esperadoFormula && Number(cierreO.data.descuadre) === -20);
+  probar('Nota de cierre "DD-MM-YYYY se retira efectivo del hotel"',
+    /^\d{2}-\d{2}-\d{4} se retira efectivo del hotel$/.test(cierreO.data.nota_cierre));
+
+  const [retiroCierre] = await bd.query(
+    "SELECT tipo, monto FROM retiros_caja WHERE turno_id = ? AND tipo = 'cierre'", [cierreO.data.id]);
+  probar('El retiro de cierre queda guardado con el monto declarado',
+    retiroCierre.length === 1 && Number(retiroCierre[0].monto) === esperadoFormula - 20);
+
+  const histO = await llamar('carlos', 'GET', '/caja/historial');
+  const turnoO = histO.data.find((t) => t.id === cierreO.data.id);
+  probar('El historial del dueño muestra retiros del turno y conteo de notas',
+    Number(turnoO.total_retiros) === 85.5 && Number(turnoO.notas) === 4);
+
+  const notasDueno = await llamar('carlos', 'GET', `/caja/${cierreO.data.id}/retiros`);
+  probar('El dueño ve las 4 notas del turno (3 gastos + 1 cierre)',
+    notasDueno.success && notasDueno.data.length === 4);
+  const notasTrabajador = await llamar('pedro', 'GET', `/caja/${cierreO.data.id}/retiros`);
+  probar('El trabajador NO ve notas de turnos del historial (403)', notasTrabajador.status === 403);
+
+  const retiroSinCaja = await llamar('pedro', 'POST', '/caja/retiros', { monto: 5, justificacion: 'sin caja' });
+  probar('Sin caja abierta no hay retiros (409)', retiroSinCaja.status === 409);
+
   await bd.end();
 
   console.log('\n============================================');

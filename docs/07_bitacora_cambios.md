@@ -4,6 +4,19 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-18 · v2.7 — Retiros de caja, gastos operativos y notas automáticas
+
+**Suite e2e: 150 → 171 pruebas.** Completa el módulo de caja (v2.5) con la parte de gastos. Regla cero respetada: la fórmula anterior solo se EXTIENDE (antes no existían retiros, así que los cierres viejos no cambian de significado).
+
+- **BD**: nueva tabla `retiros_caja` (hotel_id, turno_id FK, usuario_id, tipo `gasto|cierre`, monto, justificacion, **nota** inmutable, fecha). Migración `db/migracion_retiros_caja.sql` aplicada en local y Aiven.
+- **Retiros compartidos**: dueño Y trabajador retiran de la caja activa (`POST /caja/retiros`); exige justificación y que el monto no exceda el disponible (validado con `FOR UPDATE` en transacción). Sin caja → 409.
+- **Notas automáticas** (formato ESTRICTO, generado en backend con fecha GT): `DD-MM-YYYY se retira [monto] para [justificación]` (monto sin símbolo, entero o con 2 decimales) y al cierre `DD-MM-YYYY se retira efectivo del hotel` (tipo `cierre`, fuera de la fórmula).
+- **Fórmula del arqueo actualizada**: `esperado = monto_inicial + ventas en efectivo − retiros/gastos`; `descuadre = declarado − esperado`.
+- **Cierre flexible**: también lo hace el dueño (sin logout; el trabajador sí cierra sesión). Checkbox "retirar el efectivo" genera la nota de cierre.
+- **Frontend**: el dueño ahora ve y opera la caja desde la barra (abrir/retirar/cerrar, sin modal forzado ni bloqueo); modal de caja con fórmula desglosada y notas del turno; modal de retiro con **vista previa en vivo de la nota**; historial "Cajas" del dueño con columna Retiros y modal "Notas (n)" por turno.
+- Archivos: `db/schema.sql`, `db/migracion_retiros_caja.sql` (nuevo), `services/cajaService.js`, `controllers/cajaController.js`, `routes/index.js`, `public/js/{caja,app,operaciones}.js`, `test/e2e.js` (sección O, 21 pruebas), docs `02/04/06`.
+- Verificado en navegador (como dueño): abrir Q500 → retiro Q100 con nota "17-07-2026 se retira 100 para desayuno trabajadores" → esperado Q400 → cierre cuadrado con nota de cierre → historial con "Notas (2)". Consola limpia.
+
 ## 2026-07-17 · v2.6 — Ampliación del panel Super Admin
 
 **Suite e2e: 120 → 150 pruebas.** Cero cambios de comportamiento en lo anterior. El panel del superadmin pasó de una sola vista a un panel multi-módulo (nav lateral igual que el operativo).

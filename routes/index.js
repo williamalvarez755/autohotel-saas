@@ -85,7 +85,12 @@ router.post('/reservas/:id/cancelar', operacion, e(reservasController.cancelar))
 router.get('/caja/estado', operacion, e(cajaController.estado));
 router.post('/caja/abrir', operacion, e(cajaController.abrir));
 router.post('/caja/cerrar', operacion, e(cajaController.cerrar));
+// Retiros/gastos: dueño Y trabajador pueden sacar efectivo con
+// justificación; cada retiro guarda su nota autogenerada.
+router.post('/caja/retiros', operacion, e(cajaController.retirar));
+router.get('/caja/retiros', operacion, e(cajaController.retiros));
 router.get('/caja/historial', soloDueno, e(cajaController.historial));
+router.get('/caja/:id/retiros', soloDueno, e(cajaController.notasDeTurno));
 
 // ---------------- Alertas ----------------
 router.get('/alertas', operacion, e(alertasController.obtener));

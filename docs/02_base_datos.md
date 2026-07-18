@@ -116,6 +116,36 @@ Regla: crear una reserva exige habitación disponible → máximo una pendiente 
 - **Dashboard y reportes se calculan de aquí** → siempre cuadran con el dinero real cobrado.
 Índices: `(hotel_id, fecha)`, `(estancia_id)`, `(habitacion_id)`.
 
+### turnos_caja
+Control del efectivo físico por turno. Quien abre (dueño o trabajador) declara el **fondo inicial** ("sencillo"); al cerrar se declara el efectivo contado y el sistema calcula el arqueo.
+
+| Columna | Uso |
+|---|---|
+| `hotel_id`, `usuario_id` | multi-tenant + quién abrió |
+| `monto_inicial` | fondo declarado al abrir |
+| `fecha_apertura` / `fecha_cierre` | vida del turno (`fecha_cierre` NULL mientras está abierta) |
+| `monto_sistema` | efectivo esperado calculado al cerrar (ver fórmula abajo) |
+| `monto_declarado` | efectivo físico contado por la persona |
+| `descuadre` | `monto_declarado − monto_sistema` (+ sobrante / − faltante) |
+| `estado` | `abierta` / `cerrada` |
+| `cerrado_por` | quién hizo el cierre (puede ser distinto de quien abrió) |
+| `hotel_abierta` | = `hotel_id` mientras está abierta, NULL al cerrar; su índice **UNIQUE** garantiza a nivel de motor UNA sola caja abierta por hotel (los NULL no colisionan) |
+
+`cobros.turno_id` (FK, `ON DELETE SET NULL`) enlaza cada cobro con la caja abierta en ese momento: el arqueo suma solo lo cobrado en su turno.
+
+**Fórmula del cierre**: `monto_sistema = monto_inicial + Σ(cobros en efectivo del turno) − Σ(retiros tipo 'gasto' del turno)`. Las transferencias no tocan el efectivo físico y quedan fuera.
+
+### retiros_caja
+Salidas de efectivo de una caja **abierta** (gastos operativos o retiros del dueño). Dueño y trabajador pueden retirar; el monto no puede exceder el efectivo disponible y la **justificación es obligatoria**.
+
+| Columna | Uso |
+|---|---|
+| `hotel_id`, `turno_id`, `usuario_id` | multi-tenant + a qué turno pertenece + quién retiró |
+| `tipo` | `gasto` (entra a la fórmula del arqueo) / `cierre` (retiro del efectivo declarado al cerrar; NO entra: ocurre después del arqueo) |
+| `monto`, `justificacion` | lo retirado y su porqué |
+| `nota` | **nota autogenerada e inmutable** con formato estricto: `DD-MM-YYYY se retira [monto] para [justificación]` (monto sin símbolo: `100` o `100.50`); para el cierre: `DD-MM-YYYY se retira efectivo del hotel` |
+| `fecha` | momento exacto del movimiento (hora GT) |
+
 ### sesiones
 Tabla de `express-mysql-session` (`session_id, expires, data`). Se crea en el schema para que exista desde la importación.
 

@@ -148,9 +148,13 @@ Un trabajador abre su caja con un fondo inicial, opera y al cerrar declara el ef
 ### GET /caja/estado — [D][T] — `{ abierta: {...} | null }`
 La caja abierta del hotel con su `efectivo_cobrado` y `efectivo_esperado` calculados en vivo, o `null`.
 ### POST /caja/abrir — [D][T] — `{ monto_inicial }` — abre la caja (falla si ya hay una abierta).
-### POST /caja/cerrar — [D][T] — `{ monto_declarado }`
-Cierra la caja abierta: calcula `monto_sistema` (fondo + efectivo del turno) y `descuadre` (`declarado - sistema`: + sobrante / − faltante).
-### GET /caja/historial — [D] — turnos del hotel (para auditar descuadres); las cajas abiertas muestran su esperado en vivo.
+### POST /caja/cerrar — [D][T] — `{ monto_declarado, retirar_efectivo? }`
+Cierra la caja abierta (trabajador o dueño): `monto_sistema = fondo + efectivo del turno − retiros/gastos`; `descuadre = declarado − sistema` (+ sobrante / − faltante). Con `retirar_efectivo: true` registra además el retiro del efectivo declarado con la nota `DD-MM-YYYY se retira efectivo del hotel` (posterior al arqueo: no altera la fórmula).
+### POST /caja/retiros — [D][T] — `{ monto, justificacion }`
+Retiro de efectivo de la caja abierta (gasto operativo o retiro del dueño). Exige justificación y que el monto no exceda el efectivo disponible (400). Sin caja abierta → 409. Genera y guarda la **nota automática** `DD-MM-YYYY se retira [monto] para [justificación]` y devuelve el nuevo esperado.
+### GET /caja/retiros — [D][T] — retiros/notas de la caja abierta del hotel.
+### GET /caja/:id/retiros — [D] — notas de cualquier turno del hotel (auditoría del historial).
+### GET /caja/historial — [D] — turnos del hotel con fondo, `total_retiros`, esperado, declarado, descuadre y conteo de notas; las cajas abiertas muestran su esperado en vivo.
 
 ## Alertas
 

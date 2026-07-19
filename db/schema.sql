@@ -271,8 +271,13 @@ CREATE TABLE estancias (
   hora_salida_real     DATETIME NULL,
   horas_extra          INT UNSIGNED NOT NULL DEFAULT 0,
   -- Foto del recargo de la reserva que originó la estancia (si hubo)
+  -- + extras opcionales (jacuzzi, decoración) elegidos en la entrada
+  -- o agregados DESPUÉS. cargo_extra_pagado registra cuánto de ese
+  -- cargo ya se cobró con el base: lo agregado después de pagar
+  -- queda como saldo pendiente y se liquida en la salida.
   cargo_extra          DECIMAL(10,2) NOT NULL DEFAULT 0,
   cargo_descripcion    VARCHAR(200) NOT NULL DEFAULT '',
+  cargo_extra_pagado   DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_base           DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_extra          DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_habitacion     DECIMAL(10,2) NOT NULL DEFAULT 0,

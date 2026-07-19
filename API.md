@@ -85,16 +85,21 @@ Reglas: habitación disponible (o reservada solo con su `reserva_id`). `placa` e
 Valida que no esté pagado; efectivo debe alcanzar. Registra el cobro en el libro `cobros`. → `{ total, metodo, cambio }`.
 
 ### GET /estancias/activas — [D][T] — estancias activas con épocas y bandera `excedida`.
-### GET /estancias/:id — [D][T] — detalle + pedidos.
+### GET /estancias/:id — [D][T] — detalle + pedidos + `extras_disponibles` (menú de extras de la habitación) + `cargo_extra_pendiente`.
+### POST /estancias/:id/extras — [D][T] — agregar un extra con la estancia en curso
+```json
+{ "extra_id": 3 }
+```
+El extra debe ser del menú de ESA habitación (ajeno → **404**); el mismo extra no se repite (**409**); estancia finalizada → **400**. Si el base NO se ha pagado, engrosa el cobro base; si YA se pagó, la diferencia queda como **saldo pendiente** (`cargo_extra_pendiente`) que se cobra en la salida. No genera cobro inmediato ni toca la caja.
 ### GET /estancias/:id/pre-salida — [D][T] — desglose calculado al momento (no modifica):
-`{ total_base, horas_extra, total_extra, total_habitacion, total_pedidos, total_final, pendiente_base, total_pendiente, precio_hora_extra, tarifa_nombre, ... }`
+`{ total_base, cargo_extra, cargo_extra_pendiente, horas_extra, total_extra, total_habitacion, total_pedidos, total_final, pendiente_base, total_pendiente, precio_hora_extra, tarifa_nombre, ... }`
 Horas extra = excedente sobre la salida prevista **redondeado hacia arriba**, cobradas al `precio_hora_extra` **fotografiado al registrar la entrada** (no al precio actual de la habitación).
 
 ### POST /estancias/:id/salida — [D][T] — finalizar
 ```json
 { "metodo": "efectivo", "efectivo_recibido": 100 }
 ```
-`metodo` solo es obligatorio si hay pendiente (> Q0). Recalcula extras al momento real, cobra pendiente (base no pagada + extras + pedidos), registra el cobro, estancia → finalizada y habitación → LIMPIEZA. → desglose final + `cambio`.
+`metodo` solo es obligatorio si hay pendiente (> Q0). Recalcula extras al momento real, cobra pendiente (base no pagada + saldo de extras agregados tras pagar + horas extra + pedidos), registra el cobro, estancia → finalizada y habitación → LIMPIEZA. → desglose final + `cambio`.
 
 ---
 
@@ -122,7 +127,7 @@ Trabajador: `precio` opcional (si no lo sabe queda en 0 y el dueño lo confirma)
 ```json
 { "cantidad": 24, "motivo": "Llegó camión del proveedor" }
 ```
-### POST /productos/:id/ajuste — [D] — `{ "direccion": "sumar"|"restar", "cantidad": 5, "motivo": "conteo físico" }` (motivo obligatorio; nunca deja stock negativo).
+### POST /productos/:id/ajuste — [D][T] — `{ "direccion": "sumar"|"restar", "cantidad": 5, "motivo": "consumo interno" }` (justificación obligatoria; nunca deja stock negativo; queda auditado en movimientos con usuario y fecha; no involucra la caja).
 ### GET /productos/movimientos — [D] — historial (últimos 300): tipo (entrada/salida/ajustes), cantidad, motivo, **usuario** y fecha. Filtro `?producto_id=`.
 
 ---

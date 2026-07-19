@@ -4,6 +4,23 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-18 · v2.9 — Baja de inventario por trabajadores + extras con la estancia en curso
+
+**Suite e2e: 188 → 206 pruebas.** Regla cero respetada: no hay rutas nuevas de dinero y la caja no se toca (los ajustes de inventario no involucran transacciones monetarias).
+
+### Baja de inventario / consumo interno (trabajador con justificación)
+`POST /productos/:id/ajuste` pasa de `soloDueno` a `operacion`: el trabajador ahora ajusta stock (sumar/restar) igual que el dueño, **siempre con justificación obligatoria** (`motivo`, ya validado con `textoRequerido`). No se creó tabla nueva: cada ajuste ya queda auditado en **`movimientos_inventario`** con producto, cantidad, tipo (`ajuste_positivo/negativo`), justificación exacta, usuario y fecha GT. El stock jamás queda negativo (transacción + `FOR UPDATE`). El historial de movimientos sigue siendo **solo del dueño**. UI: botón "Ajustar" visible para ambos roles con nota "quedará registrado con su usuario… no afecta la caja".
+
+### Extras agregados con la estancia en curso (incluso ya pagado el base)
+Antes los extras (jacuzzi, decoración) solo se elegían al registrar la entrada. Ahora también se agregan DESPUÉS con `POST /estancias/:id/extras` (dueño y trabajador):
+
+- **BD**: `estancias.cargo_extra_pagado` (migración `db/migracion_extras_postpago.sql`, aplicada en local y Aiven) — foto de cuánto del cargo adicional quedó saldado al pagar el base (`pagarBase` lo fija = `cargo_extra`).
+- **Regla**: si el base NO se ha pagado, el extra engrosa el cobro base (tubería intacta). Si YA se pagó, la diferencia `cargo_extra − cargo_extra_pagado` queda como **saldo pendiente** que la salida liquida por la tubería de cobros existente (respetando el control de caja del trabajador). Anti-IDOR (extra de otra habitación → 404), duplicado → 409, estancia finalizada → 400, tope de descripción 200.
+- **Frontend**: el modal de estancia muestra "Saldo de extras por cobrar en la salida" y el botón "Agregar extra" (lista vertical con los extras de la habitación; los ya agregados aparecen deshabilitados). La pre-salida marca el cargo como "pendiente Q…" en vez de "ya pagado" cuando hay saldo.
+- **Fix de paso**: al registrar un pedido, `total_final` en curso omitía `cargo_extra` (se corregía recién al finalizar); la fórmula ahora incluye los tres conceptos.
+
+Archivos: `db/{schema,migracion_extras_postpago}.sql`, `services/{estancias,productos,pedidos}Service.js`, `controllers/{estancias,productos}Controller.js`, `routes/index.js`, `public/js/{operaciones,administracion}.js`, `public/css/estilos.css`, `test/e2e.js` (sección Q, 18 pruebas + 1 actualizada), docs `02/04/06`, `API.md`.
+
 ## 2026-07-18 · v2.8 — Módulo Gastos + extras opcionales por habitación
 
 **Suite e2e: 171 → 188 pruebas.**

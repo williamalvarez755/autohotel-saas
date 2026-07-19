@@ -35,11 +35,14 @@
    - `tipo noche`: `hora_salida_prevista = entrada + horas_noche` del hotel (default 12); `total_base = precio_noche`.
    - **Foto de condiciones**: la estancia copia `tarifa_nombre`, horas y `precio_hora_extra` vigentes. Cambios de precios posteriores no alteran esta estancia.
    - Habitación → `ocupada`; reserva → `usada`; la UI pasa directo a la pantalla de cobro.
-2. **Cobro base adelantado** (`pago-base`, transacción): así operan los autohoteles reales. Efectivo valida `recibido ≥ total` y calcula el **cambio**; registra el cobro en el libro. Puede posponerse ("cobrar en la salida"): `pagado_base` queda 0 y la salida lo liquida.
+2. **Cobro base adelantado** (`pago-base`, transacción): así operan los autohoteles reales. Efectivo valida `recibido ≥ total` y calcula el **cambio**; registra el cobro en el libro (total = `total_base + cargo_extra`) y **fotografía `cargo_extra_pagado = cargo_extra`** (lo saldado hasta ese momento). Puede posponerse ("cobrar en la salida"): `pagado_base` queda 0 y la salida lo liquida.
 3. **Pedidos** durante la estancia (ver inventario).
+3b. **Extras con la estancia en curso** (`POST /estancias/:id/extras`, dueño y trabajador): agrega un extra del menú de la habitación (anti-IDOR: ajeno → 404; duplicado → 409; finalizada → 400).
+   - Base **sin pagar**: el extra engrosa `cargo_extra` y se cobra junto con el base (tubería intacta).
+   - Base **ya pagado**: la diferencia `cargo_extra − cargo_extra_pagado` queda como **saldo pendiente** y la salida la liquida (como los pedidos). No hay cobro inmediato ni ruta nueva de dinero.
 4. **Salida** (`salida`, transacción):
    - `horas_extra = techo((ahora − salida_prevista) / 1h)` si se excedió (aplica también a noche), cobradas al `precio_hora_extra` **fotografiado en la estancia** (no al precio actual).
-   - `total_pendiente = base_no_pagada + total_extra + total_pedidos`. Si > 0 exige método de pago (efectivo valida y da cambio).
+   - `total_pendiente = base_no_pagada + saldo de extras + total_extra + total_pedidos` (si el base ya se pagó, `base_no_pagada` es 0 y solo queda el saldo de extras agregados después). Si > 0 exige método de pago (efectivo valida y da cambio) y respeta el control de caja del trabajador.
    - Guarda `hora_salida_real`, totales y estado `finalizada`; habitación → `limpieza` con `limpieza_desde = ahora`; registra el cobro de salida con desglose.
 5. Los totales de la estancia (`total_base/extra/habitacion/pedidos/final`) se calculan **siempre en backend**; el frontend solo muestra.
 
@@ -56,8 +59,8 @@
 - **Pedido** (transacción): bloquea producto (`FOR UPDATE`) → valida `stock ≥ cantidad` (el stock **nunca** queda negativo, también es UNSIGNED) → inserta pedido con `precio_unitario` del momento → descuenta stock → registra movimiento `salida` → acumula `total_pedidos` de la estancia.
 - **Ingreso de mercadería** (dueño y trabajador): suma stock + movimiento `entrada` con cantidad, motivo, **usuario** y fecha (auditable por el dueño).
 - **Producto nuevo**: ambos roles; el trabajador puede indicar el precio de llegada o dejarlo en Q0 (etiqueta "Sin precio" hasta que el dueño lo confirme). El stock inicial genera movimiento de entrada.
-- **Ajustes** (solo dueño): sumar/restar con motivo obligatorio; restar valida que no quede negativo (movimientos `ajuste_positivo/negativo`).
-- **Solo dueño**: editar precio/nombre/mínimo, desactivar producto y ver el historial de movimientos.
+- **Ajustes / baja de inventario** (dueño Y trabajador desde v2.9): sumar/restar con **justificación obligatoria** (consumo interno, daño, conteo físico); restar valida que no quede negativo (movimientos `ajuste_positivo/negativo` con producto, cantidad, justificación exacta, usuario y fecha). **No afecta la caja**: un ajuste no involucra dinero.
+- **Solo dueño**: editar precio/nombre/mínimo, desactivar producto y ver el historial de movimientos (auditoría).
 - **Alerta bajo stock**: `stock ≤ stock_minimo` (productos activos).
 
 ## Flujo de reservas

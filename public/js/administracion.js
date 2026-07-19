@@ -49,9 +49,8 @@ async function cargarInventario() {
             : (p.bajo_stock ? '<span class="etiqueta roja">Bajo stock</span>' : '<span class="etiqueta verde">OK</span>')}</td>
           <td class="derecha" style="white-space:nowrap">
             ${p.activo ? `<button class="boton exito mini" data-entrada="${p.id}">${icono('mas', 13)} Entrada</button>` : ''}
-            ${App.esDueno ? `
-              <button class="boton secundario mini" data-ajuste="${p.id}" ${p.activo ? '' : 'disabled'}>Ajustar</button>
-              <button class="boton secundario mini" data-editar="${p.id}">Editar</button>` : ''}
+            <button class="boton secundario mini" data-ajuste="${p.id}" ${p.activo ? '' : 'disabled'}>Ajustar</button>
+            ${App.esDueno ? `<button class="boton secundario mini" data-editar="${p.id}">Editar</button>` : ''}
           </td>
         </tr>`).join('')}
       </tbody></table></div>`
@@ -169,7 +168,8 @@ function modalEntradaMercaderia(producto) {
   });
 }
 
-/** Ajuste manual de stock, en ambas direcciones (solo dueño). */
+/** Ajuste manual de stock, en ambas direcciones (dueño y trabajador,
+ *  con justificación obligatoria; queda auditado). */
 function modalAjusteStock(producto) {
   abrirModal({
     titulo: `Ajustar stock · ${escapar(producto.nombre)}`,
@@ -184,8 +184,9 @@ function modalAjusteStock(producto) {
         </div></div>
       <div class="campo"><label>Cantidad</label>
         <input id="maj-cantidad" type="number" min="1" inputmode="numeric" placeholder="0"></div>
-      <div class="campo"><label>Motivo (obligatorio)</label>
-        <input id="maj-motivo" maxlength="200" placeholder="Ej.: conteo físico, producto dañado"></div>`,
+      <div class="campo"><label>Justificación (obligatoria)</label>
+        <input id="maj-motivo" maxlength="200" placeholder="Ej.: consumo interno, producto dañado, conteo físico"></div>
+      <div class="ayuda suave">El ajuste quedará registrado con su usuario, fecha y justificación para auditoría del dueño. No afecta la caja.</div>`,
     pie: `<button class="boton secundario" id="maj-cancelar">Cancelar</button>
           <button class="boton" id="maj-guardar">Aplicar ajuste</button>`
   });

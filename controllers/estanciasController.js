@@ -67,6 +67,21 @@ async function detalle(req, res) {
   return ok(res, datos);
 }
 
+/**
+ * Agrega un extra del menú de la habitación a una estancia activa
+ * (incluso ya pagado el base: la diferencia queda como saldo
+ * pendiente que se liquida en la salida).
+ */
+async function agregarExtra(req, res) {
+  const id = v.idValido(req.params.id);
+  const extraId = v.idValido((req.body || {}).extra_id, 'extra_id');
+  const resultado = await estanciasService.agregarExtra(req.hotelId, id, extraId);
+  const mensaje = resultado.pagado_base
+    ? `Extra agregado: queda pendiente ${resultado.cargo_extra_pendiente.toFixed(2)} por cobrar en la salida`
+    : 'Extra agregado: se cobrará junto con el base';
+  return ok(res, resultado, mensaje);
+}
+
 async function preSalida(req, res) {
   const id = v.idValido(req.params.id);
   const datos = await estanciasService.preSalida(req.hotelId, id);
@@ -80,4 +95,4 @@ async function finalizar(req, res) {
   return ok(res, resultado, 'Estancia finalizada');
 }
 
-module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, preSalida, finalizar };
+module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, agregarExtra, preSalida, finalizar };

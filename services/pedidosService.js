@@ -65,11 +65,13 @@ async function crear(hotelId, usuarioId, estanciaId, productoId, cantidad) {
       ]
     );
 
-    // Total acumulado calculado en SQL para evitar carreras.
+    // Total acumulado calculado en SQL para evitar carreras. Incluye
+    // el cargo adicional (recargo de reserva + extras) para que el
+    // total en curso siempre refleje todos los conceptos.
     await cx.query(
       `UPDATE estancias
           SET total_pedidos = ROUND(total_pedidos + ?, 2),
-              total_final = ROUND(total_habitacion + total_pedidos, 2)
+              total_final = ROUND(total_habitacion + cargo_extra + total_pedidos, 2)
         WHERE id = ?`,
       [subtotal, estanciaId]
     );

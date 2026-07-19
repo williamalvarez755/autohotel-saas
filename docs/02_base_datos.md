@@ -79,11 +79,14 @@ Configuración por hotel: umbral de alerta de limpieza y duración de la "noche"
 | precio_hora_extra DECIMAL(10,2) | **foto** del precio de hora extra al entrar |
 | hora_entrada · hora_salida_prevista · hora_salida_real | DATETIME GT |
 | horas_extra INT | calculadas al finalizar (techo del excedente) |
+| cargo_extra DECIMAL(10,2) | **foto** de cargos adicionales: recargo de reserva + extras (jacuzzi, decoración), elegidos en la entrada o agregados con la estancia en curso |
+| cargo_descripcion VARCHAR(200) | detalle legible, nombres unidos con " + " (ej. "Jacuzzi + Decoración") |
+| cargo_extra_pagado DECIMAL(10,2) | porción del cargo adicional ya saldada con el cobro base (v2.9); lo agregado después de pagar = `cargo_extra − cargo_extra_pagado` queda como saldo pendiente que la salida liquida |
 | total_base | cobro adelantado (precio de la tarifa o precio_noche) |
 | total_extra | horas_extra × precio_hora_extra (el fotografiado) |
 | total_habitacion | base + extra |
 | total_pedidos | acumulado transaccional de pedidos |
-| total_final | habitación + pedidos |
+| total_final | habitación + cargo_extra + pedidos |
 | pagado_base TINYINT | ¿ya se cobró el adelanto? |
 | metodo_pago / metodo_pago_salida | ENUM('efectivo','transferencia') NULL |
 | estado ENUM('activa','finalizada') | |
@@ -102,7 +105,7 @@ La **foto de condiciones** (tarifa_nombre, horas, precio, precio_hora_extra) gar
 
 ### movimientos_inventario (auditoría)
 `id, hotel_id, producto_id FK, tipo ENUM('entrada','salida','ajuste_positivo','ajuste_negativo'), cantidad (siempre positiva), motivo, usuario_id FK, fecha`
-Cada cambio de stock (pedido, ingreso de mercadería, ajuste, stock inicial) deja fila aquí con el **usuario** que lo hizo.
+Cada cambio de stock (pedido, ingreso de mercadería, ajuste, stock inicial) deja fila aquí con el **usuario** que lo hizo. Desde v2.9 los ajustes (baja por consumo interno, daño, conteo físico) los registran **dueño y trabajador**, siempre con justificación obligatoria en `motivo`; el historial de auditoría sigue siendo solo del dueño. Un ajuste **no toca la caja**: no involucra dinero, solo existencias.
 
 ### reservas
 `id, hotel_id, habitacion_id FK, fecha_hora DATETIME, placa, nota, estado ENUM('pendiente','usada','cancelada'), creado_por FK, creado_en`

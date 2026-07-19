@@ -277,8 +277,10 @@ async function principal() {
   probar('Trabajador NO ve usuarios (403)', usuariosProhibido.status === 403);
   const editarProhibido = await llamar('pedro', 'PUT', '/productos/3', { nombre: 'x', precio: 1, stock_minimo: 1, activo: 1 });
   probar('Trabajador NO edita precios (403)', editarProhibido.status === 403);
-  const ajusteProhibido = await llamar('pedro', 'POST', '/productos/3/ajuste', { direccion: 'restar', cantidad: 1, motivo: 'x' });
-  probar('Trabajador NO hace ajustes negativos (403)', ajusteProhibido.status === 403);
+  // v2.9: el trabajador SÍ ajusta stock (baja por consumo interno),
+  // pero la justificación es obligatoria (la sección Q cubre el caso completo)
+  const ajusteSinMotivo = await llamar('pedro', 'POST', '/productos/3/ajuste', { direccion: 'restar', cantidad: 1 });
+  probar('Trabajador SÍ ajusta stock, pero solo con justificación (400 sin motivo)', ajusteSinMotivo.status === 400);
   const habitacionProhibida = await llamar('pedro', 'POST', '/habitaciones', {
     nombre: 'HACK-TRAB', precio_noche: 1, precio_hora_extra: 1,
     tarifas: [{ nombre: '1 hora', horas: 1, precio: 1 }]
@@ -868,6 +870,122 @@ async function principal() {
     gastosFuturos.success && gastosFuturos.data.retiros.length === 0);
   const gastosTrabajador = await llamar('pedro', 'GET', '/caja/gastos');
   probar('El trabajador NO accede al historial de gastos (403)', gastosTrabajador.status === 403);
+
+  console.log('\n=== Q. Baja de inventario por trabajador + extras post-pago ===');
+  // --- Ajuste de stock por el trabajador (con justificación auditada) ---
+  const productosQ = await llamar('pedro', 'GET', '/productos');
+  const productoQ = productosQ.data.find((p) => p.activo && p.stock >= 2);
+  probar('Hay producto activo con stock para ajustar', Boolean(productoQ));
+  const motivoQ = 'Consumo interno: limpieza de habitaciones';
+  const bajaQ = await llamar('pedro', 'POST', `/productos/${productoQ.id}/ajuste`, {
+    direccion: 'restar', cantidad: 2, motivo: motivoQ
+  });
+  probar('El trabajador resta stock con justificación (baja por consumo interno)',
+    bajaQ.success && bajaQ.data.stock === productoQ.stock - 2);
+  const sinMotivoQ = await llamar('pedro', 'POST', `/productos/${productoQ.id}/ajuste`, {
+    direccion: 'restar', cantidad: 1
+  });
+  probar('BLOQUEO: ajuste sin justificación se rechaza (400)', sinMotivoQ.status === 400);
+  const excesoQ = await llamar('pedro', 'POST', `/productos/${productoQ.id}/ajuste`, {
+    direccion: 'restar', cantidad: 999999, motivo: 'intento de dejar stock negativo'
+  });
+  probar('BLOQUEO: restar más que el stock existente se rechaza', !excesoQ.success);
+  const movimientosQ = await llamar('carlos', 'GET', `/productos/movimientos?producto_id=${productoQ.id}`);
+  const movQ = movimientosQ.data[0];
+  probar('AUDITORÍA: guarda producto, cantidad, trabajador y justificación exacta',
+    movimientosQ.success && movQ && movQ.tipo === 'ajuste_negativo' && movQ.cantidad === 2
+    && movQ.motivo === motivoQ && movQ.usuario_rol === 'trabajador'
+    && movQ.producto_nombre === productoQ.nombre && Boolean(movQ.fecha));
+  const [productoAjenoQ] = await bd.query('SELECT id FROM productos WHERE hotel_id = 3 LIMIT 1');
+  const ajusteAjenoQ = await llamar('pedro', 'POST', `/productos/${productoAjenoQ[0].id}/ajuste`, {
+    direccion: 'restar', cantidad: 1, motivo: 'intento entre hoteles'
+  });
+  probar('AISLAMIENTO: el trabajador no ajusta productos de otro hotel (404)', ajusteAjenoQ.status === 404);
+  const movTrabajadorQ = await llamar('pedro', 'GET', '/productos/movimientos');
+  probar('El historial de movimientos sigue siendo solo del dueño (403)', movTrabajadorQ.status === 403);
+
+  // --- Extras agregados con la estancia en curso (incluso ya pagado el base) ---
+  let tableroQ = await llamar('carlos', 'GET', '/habitaciones');
+  const libreQ = tableroQ.data.habitaciones.find((h) =>
+    h.estado === 'disponible' && h.tarifas.length && !h.extras.length);
+  const adminQ = await llamar('carlos', 'GET', '/habitaciones/admin');
+  const fichaQ = adminQ.data.find((h) => h.id === libreQ.id);
+  const datosBaseQ = {
+    nombre: fichaQ.nombre, precio_noche: fichaQ.precio_noche,
+    precio_hora_extra: fichaQ.precio_hora_extra, activo: 1,
+    tarifas: fichaQ.tarifas.map((t) => ({ nombre: t.nombre, horas: t.horas, precio: t.precio }))
+  };
+  const configuraQ = await llamar('carlos', 'PUT', `/habitaciones/${libreQ.id}`, {
+    ...datosBaseQ, extras: [{ nombre: 'Jacuzzi', precio: 40 }, { nombre: 'Decoración', precio: 60 }]
+  });
+  probar('El dueño configura extras para la prueba', configuraQ.success);
+
+  // El PUT regenera tarifas y extras: refrescar para obtener ids vigentes
+  tableroQ = await llamar('carlos', 'GET', '/habitaciones');
+  const habQ = tableroQ.data.habitaciones.find((h) => h.id === libreQ.id);
+  const tarifaQ = habQ.tarifas[0];
+  const entradaQ = await llamar('carlos', 'POST', '/estancias', {
+    habitacion_id: libreQ.id, tipo: 'horas', tarifa_id: tarifaQ.id
+  });
+  const detalleQ = await llamar('carlos', 'GET', `/estancias/${entradaQ.data.id}`);
+  probar('El detalle de la estancia expone el menú de extras de la habitación',
+    detalleQ.success && detalleQ.data.extras_disponibles.length === 2);
+  const jacuzziQ = detalleQ.data.extras_disponibles.find((x) => x.nombre === 'Jacuzzi');
+  const decoracionQ = detalleQ.data.extras_disponibles.find((x) => x.nombre === 'Decoración');
+
+  // Antes de pagar: el extra engrosa el cobro base (sin saldo aparte)
+  const extraAntesQ = await llamar('pedro', 'POST', `/estancias/${entradaQ.data.id}/extras`, {
+    extra_id: jacuzziQ.id
+  });
+  probar('Extra agregado ANTES de pagar: engrosa el cobro base sin saldo aparte',
+    extraAntesQ.success && Number(extraAntesQ.data.cargo_extra) === 40
+    && extraAntesQ.data.cargo_descripcion === 'Jacuzzi'
+    && Number(extraAntesQ.data.cargo_extra_pendiente) === 0);
+  const totalBaseQ = Math.round((Number(tarifaQ.precio) + 40) * 100) / 100;
+  const pagoQ = await llamar('carlos', 'POST', `/estancias/${entradaQ.data.id}/pago-base`, {
+    metodo: 'efectivo', efectivo_recibido: totalBaseQ
+  });
+  probar('El cobro base exige tarifa + extra agregado en curso',
+    pagoQ.success && Number(pagoQ.data.total) === totalBaseQ);
+
+  // Después de pagar: el nuevo extra queda como saldo pendiente
+  const extraDespuesQ = await llamar('pedro', 'POST', `/estancias/${entradaQ.data.id}/extras`, {
+    extra_id: decoracionQ.id
+  });
+  probar('Extra agregado DESPUÉS de pagar: queda saldo pendiente Q60',
+    extraDespuesQ.success && Number(extraDespuesQ.data.cargo_extra) === 100
+    && Number(extraDespuesQ.data.cargo_extra_pendiente) === 60
+    && extraDespuesQ.data.cargo_descripcion === 'Jacuzzi + Decoración');
+  const repetidoQ = await llamar('pedro', 'POST', `/estancias/${entradaQ.data.id}/extras`, {
+    extra_id: jacuzziQ.id
+  });
+  probar('BLOQUEO: el mismo extra no se agrega dos veces (409)', repetidoQ.status === 409);
+  const h04Q = tableroQ.data.habitaciones.find((h) => h.id === 4);
+  const extraAjenoQ = await llamar('pedro', 'POST', `/estancias/${entradaQ.data.id}/extras`, {
+    extra_id: h04Q.extras[0].id
+  });
+  probar('AISLAMIENTO: extra de otra habitación → 404', extraAjenoQ.status === 404);
+
+  const preSalidaQ = await llamar('carlos', 'GET', `/estancias/${entradaQ.data.id}/pre-salida`);
+  probar('La pre-salida muestra el saldo del extra como pendiente',
+    preSalidaQ.success && Number(preSalidaQ.data.cargo_extra_pendiente) === 60
+    && Number(preSalidaQ.data.total_pendiente) === 60
+    && Number(preSalidaQ.data.total_final) === totalBaseQ + 60);
+  const salidaQ = await llamar('carlos', 'POST', `/estancias/${entradaQ.data.id}/salida`, {
+    metodo: 'efectivo', efectivo_recibido: 60
+  });
+  probar('La salida cobra el saldo del extra (cambio Q0) y el total cuadra',
+    salidaQ.success && Number(salidaQ.data.total_final) === totalBaseQ + 60
+    && salidaQ.data.cambio === 0);
+  const [cobrosQ] = await bd.query(
+    'SELECT COALESCE(SUM(monto_total), 0) AS suma FROM cobros WHERE estancia_id = ?', [entradaQ.data.id]);
+  probar('El libro de cobros cuadra: base con extra inicial + saldo posterior',
+    Number(cobrosQ[0].suma) === totalBaseQ + 60);
+  const finalizadaQ = await llamar('pedro', 'POST', `/estancias/${entradaQ.data.id}/extras`, {
+    extra_id: decoracionQ.id
+  });
+  probar('BLOQUEO: no se agregan extras a una estancia finalizada', !finalizadaQ.success);
+  await llamar('carlos', 'POST', `/habitaciones/${libreQ.id}/limpia`);
 
   await bd.end();
 

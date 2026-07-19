@@ -59,6 +59,9 @@ router.post('/estancias', operacion, e(estanciasController.registrarEntrada));
 router.get('/estancias/activas', operacion, e(estanciasController.listarActivas));
 router.get('/estancias/:id', operacion, e(estanciasController.detalle));
 router.post('/estancias/:id/pago-base', operacion, e(estanciasController.pagarBase));
+// Agregar un extra del menú de la habitación con la estancia en
+// curso (incluso ya pagado el base: queda saldo pendiente a la salida)
+router.post('/estancias/:id/extras', operacion, e(estanciasController.agregarExtra));
 router.get('/estancias/:id/pre-salida', operacion, e(estanciasController.preSalida));
 router.post('/estancias/:id/salida', operacion, e(estanciasController.finalizar));
 
@@ -71,7 +74,10 @@ router.get('/productos', operacion, e(productosController.listar));
 router.post('/productos', operacion, e(productosController.crear));
 router.put('/productos/:id', soloDueno, e(productosController.editar));
 router.post('/productos/:id/entrada', operacion, e(productosController.registrarEntrada));
-router.post('/productos/:id/ajuste', soloDueno, e(productosController.ajustarStock));
+// Ajuste de stock (baja por consumo interno, daño, conteo físico):
+// dueño Y trabajador, siempre con motivo obligatorio; cada ajuste
+// queda auditado en movimientos_inventario con usuario y fecha.
+router.post('/productos/:id/ajuste', operacion, e(productosController.ajustarStock));
 router.get('/productos/movimientos', soloDueno, e(productosController.movimientos));
 
 // ---------------- Reservas ----------------

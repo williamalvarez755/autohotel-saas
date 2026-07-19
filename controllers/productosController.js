@@ -1,9 +1,10 @@
 // ============================================================
 // Controlador de inventario. Aplica las reglas por rol:
-// - Trabajador: crear productos (precio opcional) y registrar
-//   entradas de mercadería.
-// - Dueño: además editar, ajustar en ambas direcciones y
-//   desactivar; y auditar el historial de movimientos.
+// - Trabajador: crear productos (precio opcional), registrar
+//   entradas de mercadería y ajustar stock con motivo obligatorio
+//   (baja por consumo interno, daño, conteo físico).
+// - Dueño: además editar, desactivar y auditar el historial
+//   de movimientos.
 // ============================================================
 
 const productosService = require('../services/productosService');

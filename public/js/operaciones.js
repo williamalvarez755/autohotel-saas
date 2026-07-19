@@ -214,7 +214,8 @@ function modalCobroBase(estancia) {
 async function modalEstancia(habitacion) {
   const respuesta = await api(`/estancias/${habitacion.estancia_id}`);
   if (!respuesta.success) return avisoRespuesta(respuesta);
-  const { estancia, pedidos } = respuesta.data;
+  const { estancia, pedidos, extras_disponibles: extrasDisponibles } = respuesta.data;
+  const extraPendiente = Number(estancia.cargo_extra_pendiente) || 0;
 
   abrirModal({
     titulo: `${escapar(estancia.habitacion_nombre)}${estancia.placa ? ' · Placa ' + escapar(estancia.placa) : ''}`,
@@ -230,6 +231,9 @@ async function modalEstancia(habitacion) {
         ${Number(estancia.cargo_extra) > 0 ? `
         <div class="linea"><span>Cargos adicionales${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
           <strong class="monto">${formatoQ(estancia.cargo_extra)}</strong></div>` : ''}
+        ${extraPendiente > 0 ? `
+        <div class="linea excedido-linea"><span>Saldo de extras por cobrar en la salida</span>
+          <strong class="monto">${formatoQ(extraPendiente)}</strong></div>` : ''}
         <div class="linea"><span>Cobro base</span>
           ${estancia.pagado_base
             ? '<span class="etiqueta verde">Pagado</span>'
@@ -246,6 +250,7 @@ async function modalEstancia(habitacion) {
         </tbody></table></div>` : ''}`,
     pie: `
       ${estancia.pagado_base ? '' : `<button class="boton" id="mes-cobrar">${icono('dinero', 15)} Cobrar base</button>`}
+      ${extrasDisponibles.length ? `<button class="boton secundario" id="mes-extra">${icono('mas', 15)} Agregar extra</button>` : ''}
       <button class="boton secundario" id="mes-pedido">${icono('copa', 15)} Agregar pedido</button>
       <button class="boton peligro" id="mes-salida">Finalizar estancia</button>`
   });
@@ -268,8 +273,61 @@ async function modalEstancia(habitacion) {
       });
     });
   }
+  const botonExtra = document.getElementById('mes-extra');
+  if (botonExtra) {
+    botonExtra.addEventListener('click', () => modalAgregarExtraEstancia(estancia, extrasDisponibles));
+  }
   document.getElementById('mes-pedido').addEventListener('click', () => modalPedidos(estancia));
   document.getElementById('mes-salida').addEventListener('click', () => modalSalida(estancia.id));
+}
+
+/**
+ * Agrega un extra del menú de la habitación a la estancia en curso.
+ * Si el base ya se pagó, el precio queda como saldo pendiente y se
+ * cobra en la salida (el backend calcula y valida todo).
+ */
+function modalAgregarExtraEstancia(estancia, extrasDisponibles) {
+  // Los extras ya agregados se muestran deshabilitados
+  const yaAgregados = (estancia.cargo_descripcion || '')
+    .split(' + ').map((n) => n.trim().toLowerCase()).filter(Boolean);
+  let elegido = null;
+
+  abrirModal({
+    titulo: `Agregar extra · ${escapar(estancia.habitacion_nombre)}`,
+    cuerpo: `
+      <div class="campo"><label>Extras de la habitación</label>
+        <div class="grupo-opciones vertical" id="mex-opciones">
+          ${extrasDisponibles.map((x) => {
+            const repetido = yaAgregados.includes(x.nombre.toLowerCase());
+            return `<button type="button" class="opcion" data-valor="${x.id}" ${repetido ? 'disabled' : ''}>
+              ${escapar(x.nombre)} · ${formatoQ(x.precio)}${repetido ? ' (ya agregado)' : ''}</button>`;
+          }).join('')}
+        </div></div>
+      ${estancia.pagado_base
+        ? '<div class="ayuda suave">El cobro base ya fue pagado: el extra quedará como saldo pendiente y se cobrará en la salida.</div>'
+        : '<div class="ayuda suave">El extra se sumará al cobro base pendiente.</div>'}`,
+    pie: `<button class="boton secundario" id="mex-cancelar">Cancelar</button>
+          <button class="boton" id="mex-guardar">Agregar extra</button>`
+  });
+
+  const contenedor = document.getElementById('mex-opciones');
+  contenedor.querySelectorAll('button[data-valor]:not([disabled])').forEach((b) => {
+    b.addEventListener('click', () => {
+      contenedor.querySelectorAll('.opcion').forEach((o) => o.classList.remove('activa'));
+      b.classList.add('activa');
+      elegido = Number(b.dataset.valor);
+    });
+  });
+
+  document.getElementById('mex-cancelar').addEventListener('click', cerrarModal);
+  document.getElementById('mex-guardar').addEventListener('click', async () => {
+    if (!elegido) return aviso('Seleccione un extra', true);
+    const respuesta = await apiPost(`/estancias/${estancia.id}/extras`, { extra_id: elegido });
+    if (!respuesta.success) return avisoRespuesta(respuesta);
+    avisoRespuesta(respuesta);
+    cerrarModal();
+    modalEstancia({ estancia_id: estancia.id });
+  });
 }
 
 // ============================================================
@@ -442,7 +500,11 @@ async function modalSalida(estanciaId) {
           <span class="monto">${formatoQ(d.total_base)}</span></div>
         ${Number(d.cargo_extra) > 0 ? `
         <div class="linea"><span>Cargos adicionales${d.cargo_descripcion ? ` (${escapar(d.cargo_descripcion)})` : ''}
-          ${d.pagado_base ? '<span class="suave">· ya pagado</span>' : ''}</span>
+          ${d.pagado_base
+            ? (Number(d.cargo_extra_pendiente) > 0
+              ? `<span class="suave">· pendiente ${formatoQ(d.cargo_extra_pendiente)}</span>`
+              : '<span class="suave">· ya pagado</span>')
+            : ''}</span>
           <span class="monto">${formatoQ(d.cargo_extra)}</span></div>` : ''}
         ${d.horas_extra > 0 ? `
         <div class="linea excedido-linea"><span>Horas extra (${d.horas_extra} × ${formatoQ(d.precio_hora_extra)})</span>

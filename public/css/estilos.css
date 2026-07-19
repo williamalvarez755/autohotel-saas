@@ -1017,6 +1017,14 @@ html[data-tema="claro"] .grupo-opciones .opcion.activa { color: var(--primario-h
 .grupo-opciones .opcion.activa .monto { color: var(--acento-texto); }
 
 .grupo-opciones.tarifas { flex-wrap: wrap; }
+/* Lista vertical (ej. elegir un extra con la estancia en curso) */
+.grupo-opciones.vertical { flex-direction: column; gap: 8px; }
+.grupo-opciones.vertical .opcion { justify-content: space-between; text-align: left; }
+.grupo-opciones .opcion:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
 .grupo-opciones .opcion.tarifa {
   display: flex;
   flex-direction: column;

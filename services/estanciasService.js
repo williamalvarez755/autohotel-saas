@@ -210,8 +210,11 @@ async function pagarBase(hotelId, usuario, estanciaId, metodo, efectivoRecibido)
     // caja abierta; enlaza el cobro a la caja del turno (si la hay).
     const turnoId = await resolverTurnoParaCobro(cx, hotelId, usuario, metodo);
 
+    // cargo_extra_pagado fotografía cuánto del cargo adicional quedó
+    // saldado con este cobro: extras agregados DESPUÉS quedarán como
+    // saldo pendiente que se liquida en la salida.
     await cx.query(
-      'UPDATE estancias SET pagado_base = 1, metodo_pago = ? WHERE id = ?',
+      'UPDATE estancias SET pagado_base = 1, metodo_pago = ?, cargo_extra_pagado = cargo_extra WHERE id = ?',
       [metodo, estanciaId]
     );
     await cx.query(
@@ -277,14 +280,21 @@ function calcularDesglose(estancia, epochAhora) {
   const totalPedidos = redondear(estancia.total_pedidos);
   const totalHabitacion = sumar(totalBase, totalExtra);
   const totalFinal = sumar(totalHabitacion, cargoExtra, totalPedidos);
-  // El recargo de reserva se cobra junto con el base: si el base ya se
-  // pagó, el recargo también quedó pagado en ese mismo cobro.
-  const pendienteBase = estancia.pagado_base ? 0 : sumar(totalBase, cargoExtra);
+  // El cargo adicional vigente al pagar el base quedó saldado en ese
+  // cobro (cargo_extra_pagado). Los extras agregados DESPUÉS de pagar
+  // son la diferencia y quedan pendientes para la salida.
+  const cargoExtraPendiente = estancia.pagado_base
+    ? Math.max(0, redondear(cargoExtra - redondear(estancia.cargo_extra_pagado || 0)))
+    : 0;
+  const pendienteBase = estancia.pagado_base
+    ? cargoExtraPendiente
+    : sumar(totalBase, cargoExtra);
   const totalPendiente = sumar(pendienteBase, totalExtra, totalPedidos);
   return {
     horas_extra: extras,
     total_base: totalBase,
     cargo_extra: cargoExtra,
+    cargo_extra_pendiente: cargoExtraPendiente,
     total_extra: totalExtra,
     total_habitacion: totalHabitacion,
     total_pedidos: totalPedidos,
@@ -305,14 +315,93 @@ async function detalle(hotelId, estanciaId) {
       ORDER BY p.fecha DESC`,
     [estanciaId, hotelId]
   );
+  // Menú de extras de la habitación (para poder agregarlos también
+  // con la estancia en curso, incluso con el base ya pagado).
+  const [extrasDisponibles] = await pool.query(
+    'SELECT id, nombre, precio FROM extras_habitacion WHERE habitacion_id = ? AND hotel_id = ? ORDER BY nombre',
+    [estancia.habitacion_id, hotelId]
+  );
+  const cargoExtraPendiente = estancia.pagado_base
+    ? Math.max(0, redondear(estancia.cargo_extra - redondear(estancia.cargo_extra_pagado || 0)))
+    : 0;
   return {
     estancia: {
       ...estancia,
+      cargo_extra_pendiente: cargoExtraPendiente,
       entrada_epoch: aEpoch(estancia.hora_entrada),
       salida_prevista_epoch: aEpoch(estancia.hora_salida_prevista)
     },
-    pedidos
+    pedidos,
+    extras_disponibles: extrasDisponibles
   };
+}
+
+/**
+ * Agrega un extra del menú de la habitación a una estancia ACTIVA,
+ * incluso después de pagado el cobro base:
+ * - El extra debe ser de ESTA habitación y ESTE hotel (anti-IDOR).
+ * - Si el base NO se ha pagado, el extra simplemente engrosa el
+ *   cargo adicional y se cobra junto con el base (tubería actual).
+ * - Si el base YA se pagó, la diferencia queda como saldo pendiente
+ *   (cargo_extra - cargo_extra_pagado) y se liquida en la salida por
+ *   la tubería de cobros existente (respetando el control de caja).
+ * No crea rutas nuevas de dinero ni toca la caja aquí.
+ */
+async function agregarExtra(hotelId, estanciaId, extraId) {
+  return conTransaccion(async (cx) => {
+    const estancia = await obtenerConHabitacion(cx, hotelId, estanciaId, true);
+    if (estancia.estado !== ESTADOS_ESTANCIA.ACTIVA) {
+      throw new ErrorNegocio('La estancia ya fue finalizada');
+    }
+
+    const [extras] = await cx.query(
+      'SELECT id, nombre, precio FROM extras_habitacion WHERE id = ? AND habitacion_id = ? AND hotel_id = ? LIMIT 1',
+      [extraId, estancia.habitacion_id, hotelId]
+    );
+    if (!extras.length) {
+      throw new ErrorNegocio('El extra seleccionado no existe para esta habitación', 404);
+    }
+    const extra = extras[0];
+
+    // Un mismo extra no se agrega dos veces (igual que en la entrada).
+    const nombresActuales = (estancia.cargo_descripcion || '')
+      .split(' + ')
+      .map((n) => n.trim().toLowerCase())
+      .filter(Boolean);
+    if (nombresActuales.includes(extra.nombre.toLowerCase())) {
+      throw new ErrorNegocio(`"${extra.nombre}" ya está agregado a esta estancia`, 409);
+    }
+
+    const nuevaDescripcion = [estancia.cargo_descripcion, extra.nombre].filter(Boolean).join(' + ');
+    if (nuevaDescripcion.length > 200) {
+      throw new ErrorNegocio('La descripción de cargos adicionales alcanzó su límite');
+    }
+
+    const nuevoCargo = redondear(sumar(estancia.cargo_extra, extra.precio));
+    await cx.query(
+      `UPDATE estancias
+          SET cargo_extra = ?, cargo_descripcion = ?,
+              total_final = ROUND(total_habitacion + ? + total_pedidos, 2)
+        WHERE id = ?`,
+      [nuevoCargo, nuevaDescripcion, nuevoCargo, estanciaId]
+    );
+
+    const cargoExtraPendiente = estancia.pagado_base
+      ? Math.max(0, redondear(nuevoCargo - redondear(estancia.cargo_extra_pagado || 0)))
+      : 0;
+
+    return {
+      estancia_id: estanciaId,
+      extra_nombre: extra.nombre,
+      extra_precio: redondear(extra.precio),
+      cargo_extra: nuevoCargo,
+      cargo_descripcion: nuevaDescripcion,
+      pagado_base: Boolean(estancia.pagado_base),
+      // Saldo nuevo: si el base ya se pagó, esto es lo que quedará
+      // pendiente por cobrar en la salida por este concepto.
+      cargo_extra_pendiente: cargoExtraPendiente
+    };
+  });
 }
 
 /** Vista previa del cobro de salida (no modifica nada). */
@@ -419,4 +508,4 @@ async function finalizar(hotelId, usuario, estanciaId, metodo, efectivoRecibido)
   });
 }
 
-module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, preSalida, finalizar };
+module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, agregarExtra, preSalida, finalizar };

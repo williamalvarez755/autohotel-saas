@@ -1,10 +1,10 @@
 // ============================================================
 // Servicio de inventario.
-// - Dueño: control total (crear con precio, editar, ajustar
-//   stock en ambas direcciones, desactivar).
-// - Trabajador: puede dar de alta productos cuando llega
-//   mercadería y sumar stock (solo entradas). Cada movimiento
-//   queda auditado con usuario, cantidad, motivo y fecha.
+// - Dueño: control total (crear con precio, editar, desactivar).
+// - Dueño Y trabajador: entradas de mercadería y ajustes de stock
+//   en ambas direcciones (baja por consumo interno, daño, conteo
+//   físico) SIEMPRE con motivo obligatorio. Cada movimiento queda
+//   auditado con usuario, cantidad, motivo y fecha.
 // El stock jamás puede quedar negativo (validado en transacción).
 // ============================================================
 
@@ -108,8 +108,10 @@ async function registrarEntrada(hotelId, usuario, productoId, cantidad, motivo) 
 }
 
 /**
- * Ajuste de stock (solo dueño): 'sumar' o 'restar' una cantidad
- * con motivo obligatorio. Nunca permite stock negativo.
+ * Ajuste de stock (dueño y trabajador): 'sumar' o 'restar' una
+ * cantidad con motivo obligatorio (baja de inventario / consumo
+ * interno). Nunca permite stock negativo. No toca la caja: un
+ * ajuste no involucra dinero, solo existencias.
  */
 async function ajustarStock(hotelId, usuario, productoId, direccion, cantidad, motivo) {
   return conTransaccion(async (cx) => {

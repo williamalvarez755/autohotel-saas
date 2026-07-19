@@ -82,6 +82,18 @@ async function agregarExtra(req, res) {
   return ok(res, resultado, mensaje);
 }
 
+/**
+ * Cobra ahora los consumos pendientes (pedidos entregados + saldo
+ * de extras si el base ya se pagó), sin esperar la salida.
+ */
+async function cobrarConsumos(req, res) {
+  const id = v.idValido(req.params.id);
+  const { metodo, efectivo } = validarPago(req.body || {}, true);
+  if (!metodo) throw new ErrorNegocio('Debe indicar el método de pago');
+  const resultado = await estanciasService.cobrarConsumos(req.hotelId, req.usuario, id, metodo, efectivo);
+  return ok(res, resultado, 'Consumos cobrados');
+}
+
 async function preSalida(req, res) {
   const id = v.idValido(req.params.id);
   const datos = await estanciasService.preSalida(req.hotelId, id);
@@ -95,4 +107,4 @@ async function finalizar(req, res) {
   return ok(res, resultado, 'Estancia finalizada');
 }
 
-module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, agregarExtra, preSalida, finalizar };
+module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, agregarExtra, cobrarConsumos, preSalida, finalizar };

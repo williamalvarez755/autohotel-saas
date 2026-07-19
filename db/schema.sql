@@ -282,6 +282,9 @@ CREATE TABLE estancias (
   total_extra          DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_habitacion     DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_pedidos        DECIMAL(10,2) NOT NULL DEFAULT 0,
+  -- Porción de pedidos ya cobrada en curso (cobros tipo 'consumo'):
+  -- la salida solo liquida total_pedidos - total_pedidos_pagado
+  total_pedidos_pagado DECIMAL(10,2) NOT NULL DEFAULT 0,
   total_final          DECIMAL(10,2) NOT NULL DEFAULT 0,
   pagado_base          TINYINT(1) NOT NULL DEFAULT 0,
   metodo_pago          ENUM('efectivo','transferencia') NULL,
@@ -442,7 +445,9 @@ CREATE TABLE cobros (
   estancia_id      INT UNSIGNED NOT NULL,
   habitacion_id    INT UNSIGNED NOT NULL,
   turno_id         INT UNSIGNED NULL,
-  tipo             ENUM('base','salida') NOT NULL,
+  -- base: adelanto · salida: liquidación final · consumo: pedidos/extras
+  -- cobrados EN CURSO, al entregarlos (sin esperar la salida)
+  tipo             ENUM('base','salida','consumo') NOT NULL,
   monto_habitacion DECIMAL(10,2) NOT NULL DEFAULT 0,
   monto_pedidos    DECIMAL(10,2) NOT NULL DEFAULT 0,
   monto_total      DECIMAL(10,2) NOT NULL,

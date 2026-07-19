@@ -289,7 +289,11 @@ function calcularDesglose(estancia, epochAhora) {
   const pendienteBase = estancia.pagado_base
     ? cargoExtraPendiente
     : sumar(totalBase, cargoExtra);
-  const totalPendiente = sumar(pendienteBase, totalExtra, totalPedidos);
+  // Pedidos ya cobrados en curso (cobros tipo 'consumo'): la salida
+  // solo liquida la diferencia.
+  const pedidosPagados = redondear(estancia.total_pedidos_pagado || 0);
+  const pedidosPendientes = Math.max(0, redondear(totalPedidos - pedidosPagados));
+  const totalPendiente = sumar(pendienteBase, totalExtra, pedidosPendientes);
   return {
     horas_extra: extras,
     total_base: totalBase,
@@ -298,6 +302,8 @@ function calcularDesglose(estancia, epochAhora) {
     total_extra: totalExtra,
     total_habitacion: totalHabitacion,
     total_pedidos: totalPedidos,
+    total_pedidos_pagado: pedidosPagados,
+    pedidos_pendientes: pedidosPendientes,
     total_final: totalFinal,
     pendiente_base: pendienteBase,
     total_pendiente: totalPendiente
@@ -324,16 +330,93 @@ async function detalle(hotelId, estanciaId) {
   const cargoExtraPendiente = estancia.pagado_base
     ? Math.max(0, redondear(estancia.cargo_extra - redondear(estancia.cargo_extra_pagado || 0)))
     : 0;
+  const pedidosPendientes = Math.max(
+    0,
+    redondear(estancia.total_pedidos - redondear(estancia.total_pedidos_pagado || 0))
+  );
   return {
     estancia: {
       ...estancia,
       cargo_extra_pendiente: cargoExtraPendiente,
+      pedidos_pendientes: pedidosPendientes,
+      // Lo cobrable en curso sin tocar el base: pedidos entregados +
+      // saldo de extras (este último solo si el base ya se pagó)
+      consumos_pendientes: sumar(pedidosPendientes, cargoExtraPendiente),
       entrada_epoch: aEpoch(estancia.hora_entrada),
       salida_prevista_epoch: aEpoch(estancia.hora_salida_prevista)
     },
     pedidos,
     extras_disponibles: extrasDisponibles
   };
+}
+
+/**
+ * Cobra AHORA los consumos pendientes de una estancia activa, sin
+ * esperar la salida: pedidos entregados no cobrados + saldo de
+ * extras (si el base ya se pagó). El cobro entra al libro con tipo
+ * 'consumo' y se enlaza a la caja abierta (mismo control de turno:
+ * efectivo de trabajador exige caja). El base NO se toca aquí — ese
+ * tiene su propio flujo (pago-base) y la salida liquida el resto.
+ */
+async function cobrarConsumos(hotelId, usuario, estanciaId, metodo, efectivoRecibido) {
+  return conTransaccion(async (cx) => {
+    const estancia = await obtenerConHabitacion(cx, hotelId, estanciaId, true);
+    if (estancia.estado !== ESTADOS_ESTANCIA.ACTIVA) {
+      throw new ErrorNegocio('La estancia ya fue finalizada');
+    }
+
+    const pedidosPendientes = Math.max(
+      0,
+      redondear(estancia.total_pedidos - redondear(estancia.total_pedidos_pagado || 0))
+    );
+    const saldoExtras = estancia.pagado_base
+      ? Math.max(0, redondear(estancia.cargo_extra - redondear(estancia.cargo_extra_pagado || 0)))
+      : 0;
+    const total = sumar(pedidosPendientes, saldoExtras);
+    if (total <= 0) {
+      throw new ErrorNegocio('No hay consumos pendientes por cobrar en esta estancia');
+    }
+
+    let cambio = null;
+    if (metodo === 'efectivo') {
+      if (efectivoRecibido < total) {
+        throw new ErrorNegocio(
+          `El efectivo recibido (Q ${efectivoRecibido.toFixed(2)}) es menor al total (Q ${total.toFixed(2)})`
+        );
+      }
+      cambio = redondear(efectivoRecibido - total);
+    }
+
+    // Mismo control de caja que el resto de cobros
+    const turnoId = await resolverTurnoParaCobro(cx, hotelId, usuario, metodo);
+
+    // Marca lo cobrado (valores leídos bajo el candado FOR UPDATE)
+    await cx.query(
+      `UPDATE estancias
+          SET total_pedidos_pagado = ?${estancia.pagado_base ? ', cargo_extra_pagado = cargo_extra' : ''}
+        WHERE id = ?`,
+      [redondear(estancia.total_pedidos), estanciaId]
+    );
+
+    await cx.query(
+      `INSERT INTO cobros (hotel_id, estancia_id, habitacion_id, turno_id, tipo, monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        hotelId, estanciaId, estancia.habitacion_id, turnoId, TIPOS_COBRO.CONSUMO,
+        saldoExtras, pedidosPendientes, total, metodo, ahoraGT(), usuario.id
+      ]
+    );
+
+    return {
+      estancia_id: estanciaId,
+      habitacion_nombre: estancia.habitacion_nombre,
+      pedidos: pedidosPendientes,
+      saldo_extras: saldoExtras,
+      total,
+      metodo,
+      cambio
+    };
+  });
 }
 
 /**
@@ -489,7 +572,7 @@ async function finalizar(hotelId, usuario, estanciaId, metodo, efectivoRecibido)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           hotelId, estanciaId, estancia.habitacion_id, turnoId, TIPOS_COBRO.SALIDA,
-          sumar(d.pendiente_base, d.total_extra), d.total_pedidos, d.total_pendiente,
+          sumar(d.pendiente_base, d.total_extra), d.pedidos_pendientes, d.total_pendiente,
           metodo, horaSalidaReal, usuario.id
         ]
       );
@@ -508,4 +591,4 @@ async function finalizar(hotelId, usuario, estanciaId, metodo, efectivoRecibido)
   });
 }
 
-module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, agregarExtra, preSalida, finalizar };
+module.exports = { registrarEntrada, pagarBase, listarActivas, detalle, agregarExtra, cobrarConsumos, preSalida, finalizar };

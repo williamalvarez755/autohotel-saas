@@ -39,16 +39,17 @@
 3. **Pedidos** durante la estancia (ver inventario).
 3b. **Extras con la estancia en curso** (`POST /estancias/:id/extras`, dueño y trabajador): agrega un extra del menú de la habitación (anti-IDOR: ajeno → 404; duplicado → 409; finalizada → 400).
    - Base **sin pagar**: el extra engrosa `cargo_extra` y se cobra junto con el base (tubería intacta).
-   - Base **ya pagado**: la diferencia `cargo_extra − cargo_extra_pagado` queda como **saldo pendiente** y la salida la liquida (como los pedidos). No hay cobro inmediato ni ruta nueva de dinero.
+   - Base **ya pagado**: la diferencia `cargo_extra − cargo_extra_pagado` queda como **saldo pendiente**, cobrable en curso (3c) o en la salida. No hay ruta nueva de dinero.
+3c. **Cobro de consumos EN CURSO** (`POST /estancias/:id/cobro-consumos`, dueño y trabajador, v2.10): el recepcionista entrega el producto y **cobra al momento**, sin esperar la salida. Cobra `pedidos no cobrados + saldo de extras (solo si el base ya se pagó)`; el base NUNCA se cobra por aquí (tiene su flujo `pago-base`). Entra al libro `cobros` con tipo **`consumo`** (mismo control de caja: efectivo de trabajador exige caja abierta → 409; se enlaza al turno). Sin nada pendiente → 400. Marca `total_pedidos_pagado = total_pedidos` y `cargo_extra_pagado = cargo_extra`.
 4. **Salida** (`salida`, transacción):
    - `horas_extra = techo((ahora − salida_prevista) / 1h)` si se excedió (aplica también a noche), cobradas al `precio_hora_extra` **fotografiado en la estancia** (no al precio actual).
-   - `total_pendiente = base_no_pagada + saldo de extras + total_extra + total_pedidos` (si el base ya se pagó, `base_no_pagada` es 0 y solo queda el saldo de extras agregados después). Si > 0 exige método de pago (efectivo valida y da cambio) y respeta el control de caja del trabajador.
+   - `total_pendiente = base_no_pagada + saldo de extras + total_extra + (total_pedidos − total_pedidos_pagado)` — lo ya cobrado en curso (tipo `consumo`) no se cobra dos veces. Si > 0 exige método de pago (efectivo valida y da cambio) y respeta el control de caja del trabajador. Si todo se cobró en curso, la salida cierra sin pedir pago.
    - Guarda `hora_salida_real`, totales y estado `finalizada`; habitación → `limpieza` con `limpieza_desde = ahora`; registra el cobro de salida con desglose.
 5. Los totales de la estancia (`total_base/extra/habitacion/pedidos/final`) se calculan **siempre en backend**; el frontend solo muestra.
 
 ## Flujo de pagos (dinero del hotel)
 
-- Todo ingreso queda en **`cobros`**: `base` (adelanto) o `salida` (liquidación), con `monto_habitacion`, `monto_pedidos`, `monto_total`, método, fecha y usuario.
+- Todo ingreso queda en **`cobros`**: `base` (adelanto), `consumo` (pedidos/extras cobrados en curso, v2.10) o `salida` (liquidación final), con `monto_habitacion`, `monto_pedidos`, `monto_total`, método, fecha y usuario. Dashboard, reportes y arqueo de caja suman sin filtrar por tipo → siguen cuadrando.
 - **Dashboard**: ingresos del día = `SUM(monto_total)` de cobros de hoy (GT); clientes del día = estancias con entrada hoy.
 - **Reportes** (rango ≤ 366 días): ingresos por día y por habitación desde `cobros`; productos más vendidos desde `pedidos`; listado de estancias para cuadre.
 - Métodos: `efectivo` (con cambio calculado) y `transferencia`.

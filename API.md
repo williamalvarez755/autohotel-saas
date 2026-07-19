@@ -90,7 +90,12 @@ Valida que no esté pagado; efectivo debe alcanzar. Registra el cobro en el libr
 ```json
 { "extra_id": 3 }
 ```
-El extra debe ser del menú de ESA habitación (ajeno → **404**); el mismo extra no se repite (**409**); estancia finalizada → **400**. Si el base NO se ha pagado, engrosa el cobro base; si YA se pagó, la diferencia queda como **saldo pendiente** (`cargo_extra_pendiente`) que se cobra en la salida. No genera cobro inmediato ni toca la caja.
+El extra debe ser del menú de ESA habitación (ajeno → **404**); el mismo extra no se repite (**409**); estancia finalizada → **400**. Si el base NO se ha pagado, engrosa el cobro base; si YA se pagó, la diferencia queda como **saldo pendiente** (`cargo_extra_pendiente`) que se cobra en curso (cobro-consumos) o en la salida. Agregarlo no genera cobro inmediato ni toca la caja.
+### POST /estancias/:id/cobro-consumos — [D][T] — cobrar consumos AHORA (sin esperar la salida)
+```json
+{ "metodo": "efectivo", "efectivo_recibido": 50 }
+```
+Cobra al momento `pedidos no cobrados + saldo de extras (si el base ya se pagó)`; el base nunca se cobra por aquí. Entra al libro con tipo **`consumo`** y se enlaza a la caja abierta (efectivo de trabajador sin caja → **409**). Sin nada pendiente → **400**. La salida luego liquida solo lo restante. → `{ pedidos, saldo_extras, total, cambio }`.
 ### GET /estancias/:id/pre-salida — [D][T] — desglose calculado al momento (no modifica):
 `{ total_base, cargo_extra, cargo_extra_pendiente, horas_extra, total_extra, total_habitacion, total_pedidos, total_final, pendiente_base, total_pendiente, precio_hora_extra, tarifa_nombre, ... }`
 Horas extra = excedente sobre la salida prevista **redondeado hacia arriba**, cobradas al `precio_hora_extra` **fotografiado al registrar la entrada** (no al precio actual de la habitación).

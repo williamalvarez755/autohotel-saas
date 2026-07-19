@@ -216,6 +216,8 @@ async function modalEstancia(habitacion) {
   if (!respuesta.success) return avisoRespuesta(respuesta);
   const { estancia, pedidos, extras_disponibles: extrasDisponibles } = respuesta.data;
   const extraPendiente = Number(estancia.cargo_extra_pendiente) || 0;
+  const pedidosPagados = Number(estancia.total_pedidos_pagado) || 0;
+  const consumosPendientes = Number(estancia.consumos_pendientes) || 0;
 
   abrirModal({
     titulo: `${escapar(estancia.habitacion_nombre)}${estancia.placa ? ' · Placa ' + escapar(estancia.placa) : ''}`,
@@ -231,14 +233,17 @@ async function modalEstancia(habitacion) {
         ${Number(estancia.cargo_extra) > 0 ? `
         <div class="linea"><span>Cargos adicionales${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
           <strong class="monto">${formatoQ(estancia.cargo_extra)}</strong></div>` : ''}
-        ${extraPendiente > 0 ? `
-        <div class="linea excedido-linea"><span>Saldo de extras por cobrar en la salida</span>
-          <strong class="monto">${formatoQ(extraPendiente)}</strong></div>` : ''}
         <div class="linea"><span>Cobro base</span>
           ${estancia.pagado_base
             ? '<span class="etiqueta verde">Pagado</span>'
             : '<span class="etiqueta amarilla">Pendiente</span>'}</div>
-        <div class="linea"><span>Pedidos acumulados</span><strong class="monto">${formatoQ(estancia.total_pedidos)}</strong></div>
+        <div class="linea"><span>Pedidos acumulados${pedidosPagados > 0
+          ? ` <span class="suave">· ya cobrado ${formatoQ(pedidosPagados)}</span>` : ''}</span>
+          <strong class="monto">${formatoQ(estancia.total_pedidos)}</strong></div>
+        ${consumosPendientes > 0 ? `
+        <div class="linea excedido-linea"><span>Consumos por cobrar ahora${extraPendiente > 0
+          ? ' <span class="suave">(incluye saldo de extras)</span>' : ''}</span>
+          <strong class="monto">${formatoQ(consumosPendientes)}</strong></div>` : ''}
       </div>
       ${pedidos.length ? `
       <div class="envoltura-tabla" style="margin-bottom:12px"><table class="tabla">
@@ -250,6 +255,7 @@ async function modalEstancia(habitacion) {
         </tbody></table></div>` : ''}`,
     pie: `
       ${estancia.pagado_base ? '' : `<button class="boton" id="mes-cobrar">${icono('dinero', 15)} Cobrar base</button>`}
+      ${consumosPendientes > 0 ? `<button class="boton" id="mes-cobrar-consumos">${icono('dinero', 15)} Cobrar consumos</button>` : ''}
       ${extrasDisponibles.length ? `<button class="boton secundario" id="mes-extra">${icono('mas', 15)} Agregar extra</button>` : ''}
       <button class="boton secundario" id="mes-pedido">${icono('copa', 15)} Agregar pedido</button>
       <button class="boton peligro" id="mes-salida">Finalizar estancia</button>`
@@ -277,8 +283,80 @@ async function modalEstancia(habitacion) {
   if (botonExtra) {
     botonExtra.addEventListener('click', () => modalAgregarExtraEstancia(estancia, extrasDisponibles));
   }
+  const botonConsumos = document.getElementById('mes-cobrar-consumos');
+  if (botonConsumos) {
+    botonConsumos.addEventListener('click', () =>
+      modalCobroConsumos(estancia, estancia.pedidos_pendientes, extraPendiente));
+  }
   document.getElementById('mes-pedido').addEventListener('click', () => modalPedidos(estancia));
   document.getElementById('mes-salida').addEventListener('click', () => modalSalida(estancia.id));
+}
+
+/**
+ * Cobra ahora los consumos pendientes (pedidos entregados + saldo
+ * de extras si el base ya se pagó), sin esperar la salida. El total
+ * lo confirma el backend; aquí solo se muestra el desglose.
+ */
+function modalCobroConsumos(estancia, pedidosPendientes, saldoExtras) {
+  const pedidosPend = Number(pedidosPendientes) || 0;
+  const extrasPend = Number(saldoExtras) || 0;
+  const total = Math.round((pedidosPend + extrasPend) * 100) / 100;
+
+  abrirModal({
+    titulo: `Cobrar consumos · ${escapar(estancia.habitacion_nombre)}`,
+    cuerpo: `
+      <div class="desglose">
+        ${pedidosPend > 0 ? `
+        <div class="linea"><span>Pedidos entregados</span><span class="monto">${formatoQ(pedidosPend)}</span></div>` : ''}
+        ${extrasPend > 0 ? `
+        <div class="linea"><span>Saldo de extras${estancia.cargo_descripcion ? ` (${escapar(estancia.cargo_descripcion)})` : ''}</span>
+          <span class="monto">${formatoQ(extrasPend)}</span></div>` : ''}
+        <div class="linea grande"><span>Total a cobrar</span><span class="monto">${formatoQ(total)}</span></div>
+      </div>
+      <div class="campo"><label>Método de pago</label>
+        <div class="grupo-opciones" id="mcc-metodo">
+          <button type="button" class="opcion activa" data-valor="efectivo">${icono('dinero', 15)} Efectivo</button>
+          <button type="button" class="opcion" data-valor="transferencia">${icono('banco', 15)} Transferencia</button>
+        </div></div>
+      <div class="campo" id="mcc-campo-efectivo"><label>Efectivo recibido (Q)</label>
+        <input id="mcc-recibido" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+        <div class="cambio-grande oculto" id="mcc-cambio"></div></div>
+      <div class="ayuda suave">La salida solo cobrará lo que quede pendiente después de este cobro.</div>`,
+    pie: `<button class="boton secundario" id="mcc-cancelar">Cancelar</button>
+          <button class="boton" id="mcc-confirmar">Confirmar cobro</button>`
+  });
+
+  const inputRecibido = document.getElementById('mcc-recibido');
+  const cajaCambio = document.getElementById('mcc-cambio');
+  inputRecibido.addEventListener('input', () => {
+    const recibido = Number(inputRecibido.value);
+    if (recibido >= total) {
+      cajaCambio.textContent = 'Cambio: ' + formatoQ(recibido - total);
+      cajaCambio.classList.remove('oculto');
+    } else {
+      cajaCambio.classList.add('oculto');
+    }
+  });
+  activarGrupoOpciones(document.getElementById('mcc-metodo'), (valor) => {
+    document.getElementById('mcc-campo-efectivo').classList.toggle('oculto', valor !== 'efectivo');
+  });
+
+  document.getElementById('mcc-cancelar').addEventListener('click', cerrarModal);
+  document.getElementById('mcc-confirmar').addEventListener('click', async () => {
+    const metodo = opcionActiva(document.getElementById('mcc-metodo'));
+    const cuerpo = { metodo };
+    if (metodo === 'efectivo') cuerpo.efectivo_recibido = Number(inputRecibido.value);
+
+    const respuesta = await apiPost(`/estancias/${estancia.id}/cobro-consumos`, cuerpo);
+    if (!respuesta.success) return avisoRespuesta(respuesta);
+
+    const cambioTexto = respuesta.data.cambio !== null && respuesta.data.cambio > 0
+      ? ` · Cambio: ${formatoQ(respuesta.data.cambio)}` : '';
+    aviso(`Consumos cobrados: ${formatoQ(respuesta.data.total)}${cambioTexto}`);
+    cerrarModal();
+    refrescarVistaOperativa();
+    modalEstancia({ estancia_id: estancia.id });
+  });
 }
 
 /**
@@ -367,7 +445,8 @@ async function modalPedidos(estancia) {
         </div>
       </div>
       <div id="mp-lista"></div>`,
-    pie: `<button class="boton secundario" id="mp-cerrar">Cerrar</button>`
+    pie: `<button class="boton secundario" id="mp-cerrar">Cerrar</button>
+          <button class="boton" id="mp-cobrar">${icono('dinero', 15)} Cobrar consumos</button>`
   });
 
   const inputBuscar = document.getElementById('mp-buscar');
@@ -459,6 +538,17 @@ async function modalPedidos(estancia) {
   setTimeout(() => inputBuscar.focus(), 80);
 
   document.getElementById('mp-cerrar').addEventListener('click', cerrarModal);
+  // Cobrar lo entregado al momento, sin esperar la salida
+  document.getElementById('mp-cobrar').addEventListener('click', async () => {
+    const fresco = await api(`/estancias/${estancia.id}`);
+    if (!fresco.success) return avisoRespuesta(fresco);
+    const e = fresco.data.estancia;
+    if (!(Number(e.consumos_pendientes) > 0)) {
+      return aviso('No hay consumos pendientes por cobrar', true);
+    }
+    cerrarModal();
+    modalCobroConsumos(e, e.pedidos_pendientes, e.cargo_extra_pendiente);
+  });
   document.getElementById('mp-agregar').addEventListener('click', async () => {
     if (!seleccionado) return aviso('Seleccione un producto', true);
     const respuesta = await apiPost(`/estancias/${estancia.id}/pedidos`, {
@@ -509,7 +599,9 @@ async function modalSalida(estanciaId) {
         ${d.horas_extra > 0 ? `
         <div class="linea excedido-linea"><span>Horas extra (${d.horas_extra} × ${formatoQ(d.precio_hora_extra)})</span>
           <span class="monto">${formatoQ(d.total_extra)}</span></div>` : ''}
-        <div class="linea"><span>Pedidos</span><span class="monto">${formatoQ(d.total_pedidos)}</span></div>
+        <div class="linea"><span>Pedidos${Number(d.total_pedidos_pagado) > 0
+          ? ` <span class="suave">· ya cobrado ${formatoQ(d.total_pedidos_pagado)}</span>` : ''}</span>
+          <span class="monto">${formatoQ(d.total_pedidos)}</span></div>
         <div class="linea"><span>Total de la estancia</span><span class="monto">${formatoQ(d.total_final)}</span></div>
         <div class="linea grande"><span>Pendiente por cobrar</span><span class="monto">${formatoQ(d.total_pendiente)}</span></div>
       </div>

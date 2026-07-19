@@ -987,6 +987,94 @@ async function principal() {
   probar('BLOQUEO: no se agregan extras a una estancia finalizada', !finalizadaQ.success);
   await llamar('carlos', 'POST', `/habitaciones/${libreQ.id}/limpia`);
 
+  console.log('\n=== R. Cobro de consumos en curso (sin esperar la salida) ===');
+  // Reutiliza la habitación de Q (ya tiene Jacuzzi Q40 y Decoración Q60)
+  let tableroR = await llamar('carlos', 'GET', '/habitaciones');
+  const habR = tableroR.data.habitaciones.find((h) => h.id === libreQ.id);
+  const entradaR = await llamar('carlos', 'POST', '/estancias', {
+    habitacion_id: habR.id, tipo: 'horas', tarifa_id: habR.tarifas[0].id
+  });
+  probar('Entrada para el flujo de cobro en curso', entradaR.success);
+  const estanciaR = entradaR.data.id;
+
+  const sinPendienteR = await llamar('carlos', 'POST', `/estancias/${estanciaR}/cobro-consumos`, {
+    metodo: 'efectivo', efectivo_recibido: 100
+  });
+  probar('Sin consumos pendientes el cobro en curso se rechaza (400)', sinPendienteR.status === 400);
+
+  // Pedido entregado: se puede cobrar AL MOMENTO
+  const productosR = await llamar('carlos', 'GET', '/productos');
+  const productoR = productosR.data.find((p) => p.activo && p.stock >= 3 && Number(p.precio) > 0);
+  const precioR = Number(productoR.precio);
+  const pedidoR = await llamar('carlos', 'POST', `/estancias/${estanciaR}/pedidos`, {
+    producto_id: productoR.id, cantidad: 2
+  });
+  probar('Pedido entregado (2 unidades)', pedidoR.success && Number(pedidoR.data.subtotal) === precioR * 2);
+
+  const sinCajaR = await llamar('pedro', 'POST', `/estancias/${estanciaR}/cobro-consumos`, {
+    metodo: 'efectivo', efectivo_recibido: 500
+  });
+  probar('BLOQUEO: trabajador no cobra consumos en efectivo sin caja (409)', sinCajaR.status === 409);
+
+  const cobroConsumoR = await llamar('carlos', 'POST', `/estancias/${estanciaR}/cobro-consumos`, {
+    metodo: 'efectivo', efectivo_recibido: precioR * 2
+  });
+  probar('El dueño cobra los pedidos entregados al momento (cambio Q0)',
+    cobroConsumoR.success && Number(cobroConsumoR.data.total) === precioR * 2
+    && Number(cobroConsumoR.data.pedidos) === precioR * 2
+    && Number(cobroConsumoR.data.saldo_extras) === 0
+    && cobroConsumoR.data.cambio === 0);
+  const [cobroConsumoBD] = await bd.query(
+    "SELECT tipo, monto_habitacion, monto_pedidos, monto_total FROM cobros WHERE estancia_id = ? AND tipo = 'consumo'",
+    [estanciaR]);
+  probar('El libro registra el cobro tipo consumo con el desglose correcto',
+    cobroConsumoBD.length === 1 && Number(cobroConsumoBD[0].monto_pedidos) === precioR * 2
+    && Number(cobroConsumoBD[0].monto_habitacion) === 0
+    && Number(cobroConsumoBD[0].monto_total) === precioR * 2);
+
+  const detalleR = await llamar('carlos', 'GET', `/estancias/${estanciaR}`);
+  probar('El detalle refleja pedidos ya cobrados y nada pendiente',
+    detalleR.success && Number(detalleR.data.estancia.total_pedidos_pagado) === precioR * 2
+    && Number(detalleR.data.estancia.consumos_pendientes) === 0);
+  const dobleCobroR = await llamar('carlos', 'POST', `/estancias/${estanciaR}/cobro-consumos`, {
+    metodo: 'efectivo', efectivo_recibido: 500
+  });
+  probar('No se cobra dos veces lo mismo (400)', dobleCobroR.status === 400);
+
+  // Base pagado + extra post-pago + pedido nuevo: todo cobrable en curso
+  await llamar('carlos', 'POST', `/estancias/${estanciaR}/pago-base`, { metodo: 'transferencia' });
+  const decoracionR = detalleR.data.extras_disponibles.find((x) => x.nombre === 'Decoración');
+  await llamar('carlos', 'POST', `/estancias/${estanciaR}/extras`, { extra_id: decoracionR.id });
+  await llamar('carlos', 'POST', `/estancias/${estanciaR}/pedidos`, {
+    producto_id: productoR.id, cantidad: 1
+  });
+  const detalleR2 = await llamar('carlos', 'GET', `/estancias/${estanciaR}`);
+  probar('Extra post-pago + nuevo pedido: consumos pendientes suman ambos',
+    Number(detalleR2.data.estancia.consumos_pendientes) === 60 + precioR);
+  const cobroConsumoR2 = await llamar('carlos', 'POST', `/estancias/${estanciaR}/cobro-consumos`, {
+    metodo: 'transferencia'
+  });
+  probar('Cobro en curso por transferencia liquida extras + pedido nuevo',
+    cobroConsumoR2.success && Number(cobroConsumoR2.data.total) === 60 + precioR
+    && Number(cobroConsumoR2.data.saldo_extras) === 60
+    && Number(cobroConsumoR2.data.pedidos) === precioR);
+
+  const preSalidaR = await llamar('carlos', 'GET', `/estancias/${estanciaR}/pre-salida`);
+  probar('La pre-salida queda sin pendiente tras los cobros en curso',
+    preSalidaR.success && Number(preSalidaR.data.total_pendiente) === 0
+    && Number(preSalidaR.data.pedidos_pendientes) === 0
+    && Number(preSalidaR.data.cargo_extra_pendiente) === 0);
+  const salidaR = await llamar('carlos', 'POST', `/estancias/${estanciaR}/salida`, {});
+  const totalFinalR = Number(habR.tarifas[0].precio) + 60 + precioR * 3;
+  probar('La salida cierra sin cobrar de más (todo ya estaba cobrado)',
+    salidaR.success && Number(salidaR.data.total_final) === totalFinalR
+    && Number(salidaR.data.total_pendiente) === 0);
+  const [cobrosR] = await bd.query(
+    'SELECT COALESCE(SUM(monto_total), 0) AS suma FROM cobros WHERE estancia_id = ?', [estanciaR]);
+  probar('El libro cuadra: base + 2 cobros de consumo = total final',
+    Number(cobrosR[0].suma) === totalFinalR);
+  await llamar('carlos', 'POST', `/habitaciones/${habR.id}/limpia`);
+
   await bd.end();
 
   console.log('\n============================================');

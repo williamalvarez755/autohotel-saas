@@ -62,6 +62,9 @@ router.post('/estancias/:id/pago-base', operacion, e(estanciasController.pagarBa
 // Agregar un extra del menú de la habitación con la estancia en
 // curso (incluso ya pagado el base: queda saldo pendiente a la salida)
 router.post('/estancias/:id/extras', operacion, e(estanciasController.agregarExtra));
+// Cobrar AHORA los consumos pendientes (pedidos entregados + saldo
+// de extras), sin esperar la salida; entra al libro tipo 'consumo'
+router.post('/estancias/:id/cobro-consumos', operacion, e(estanciasController.cobrarConsumos));
 router.get('/estancias/:id/pre-salida', operacion, e(estanciasController.preSalida));
 router.post('/estancias/:id/salida', operacion, e(estanciasController.finalizar));
 

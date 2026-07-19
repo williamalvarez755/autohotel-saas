@@ -86,6 +86,7 @@ Configuración por hotel: umbral de alerta de limpieza y duración de la "noche"
 | total_extra | horas_extra × precio_hora_extra (el fotografiado) |
 | total_habitacion | base + extra |
 | total_pedidos | acumulado transaccional de pedidos |
+| total_pedidos_pagado DECIMAL(10,2) | porción de pedidos ya cobrada EN CURSO (cobros tipo `consumo`, v2.10); la salida solo liquida la diferencia |
 | total_final | habitación + cargo_extra + pedidos |
 | pagado_base TINYINT | ¿ya se cobró el adelanto? |
 | metodo_pago / metodo_pago_salida | ENUM('efectivo','transferencia') NULL |
@@ -113,9 +114,10 @@ Regla: crear una reserva exige habitación disponible → máximo una pendiente 
 Índice compuesto `(habitacion_id, estado, fecha_hora)`: sirve exactamente la subconsulta del tablero (reserva pendiente más próxima por habitación).
 
 ### cobros (libro de ingresos)
-`id, hotel_id, estancia_id FK, habitacion_id FK, tipo ENUM('base','salida'), monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id`
+`id, hotel_id, estancia_id FK, habitacion_id FK, tipo ENUM('base','salida','consumo'), monto_habitacion, monto_pedidos, monto_total, metodo, fecha, usuario_id`
 - `base`: cobro adelantado al registrar la entrada (todo habitación).
-- `salida`: liquidación al finalizar (base pendiente + horas extra en `monto_habitacion`; consumos en `monto_pedidos`).
+- `consumo` (v2.10): pedidos entregados y/o saldo de extras cobrados EN CURSO, sin esperar la salida (saldo de extras en `monto_habitacion`; pedidos en `monto_pedidos`).
+- `salida`: liquidación al finalizar (base pendiente + horas extra en `monto_habitacion`; consumos aún no cobrados en `monto_pedidos`).
 - **Dashboard y reportes se calculan de aquí** → siempre cuadran con el dinero real cobrado.
 Índices: `(hotel_id, fecha)`, `(estancia_id)`, `(habitacion_id)`.
 

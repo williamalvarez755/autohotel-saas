@@ -4,6 +4,15 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-18 · v2.10 — Cobro de consumos en curso (sin esperar la salida)
+
+**Suite e2e: 206 → 219 pruebas.** Pedido por el usuario: "le entrego el producto y de una vez le cobro, no tengo que esperar hasta la salida".
+
+- **BD**: `cobros.tipo` gana el valor **`consumo`**; `estancias.total_pedidos_pagado` marca la porción de pedidos ya cobrada en curso. Migración `db/migracion_cobro_parcial.sql` (aplicada local y Aiven). Seguro por construcción: dashboard, reportes, consultas del superadmin y arqueo de caja suman `cobros` sin filtrar por tipo → el nuevo tipo cuadra en todo sin tocar consultas; las estancias existentes quedan con 0 (su salida liquida todo, igual que antes).
+- **Backend**: `POST /estancias/:id/cobro-consumos` (dueño y trabajador) cobra AHORA `pedidos no cobrados + saldo de extras (solo si el base ya se pagó)`; el base nunca entra aquí (tiene `pago-base`). Mismo control de caja (efectivo de trabajador sin caja → 409; se enlaza al turno). Sin nada pendiente → 400. La salida ahora liquida `total_pedidos − total_pedidos_pagado` (no cobra dos veces); si todo se cobró en curso, cierra sin pedir pago. `calcularDesglose` expone `total_pedidos_pagado`/`pedidos_pendientes`; el detalle expone `consumos_pendientes`.
+- **Frontend**: modal de estancia con línea "Consumos por cobrar ahora" y botón **"Cobrar consumos"**; el POS de pedidos también tiene el botón (entregar → cobrar en el acto); modal de cobro con método + cambio en vivo; la salida marca "Pedidos · ya cobrado Q…".
+- Archivos: `db/{schema,migracion_cobro_parcial}.sql`, `config/constantes.js`, `services/estanciasService.js`, `controllers/estanciasController.js`, `routes/index.js`, `public/js/operaciones.js`, `test/e2e.js` (sección R, 13 pruebas), docs `02/04/06`, `API.md` (decisión 42).
+
 ## 2026-07-18 · v2.9 — Baja de inventario por trabajadores + extras con la estancia en curso
 
 **Suite e2e: 188 → 206 pruebas.** Regla cero respetada: no hay rutas nuevas de dinero y la caja no se toca (los ajustes de inventario no involucran transacciones monetarias).

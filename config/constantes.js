@@ -46,7 +46,10 @@ const TIPOS_MOVIMIENTO = {
 
 const TIPOS_COBRO = {
   BASE: 'base',
-  SALIDA: 'salida'
+  SALIDA: 'salida',
+  // Cobro de consumos en curso: pedidos entregados (y saldo de
+  // extras) cobrados al momento, sin esperar la salida
+  CONSUMO: 'consumo'
 };
 
 const ESTADOS_CAJA = {

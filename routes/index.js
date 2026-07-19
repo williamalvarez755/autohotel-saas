@@ -25,6 +25,7 @@ const alertasController = require('../controllers/alertasController');
 const usuariosController = require('../controllers/usuariosController');
 const superadminController = require('../controllers/superadminController');
 const consultasController = require('../controllers/consultasController');
+const respaldosController = require('../controllers/respaldosController');
 
 const router = express.Router();
 
@@ -134,6 +135,15 @@ router.delete('/superadmin/hoteles/:id', soloSuperadmin, e(superadminController.
 // Consultas avanzadas (solo superadmin; catálogo parametrizado)
 router.get('/superadmin/consultas/hoteles', soloSuperadmin, e(consultasController.hotelesFiltro));
 router.get('/superadmin/consultas/:tipo', soloSuperadmin, e(consultasController.consultar));
+
+// Respaldo completo del sistema: descarga, restauración (doble
+// confirmación + respaldo automático previo) y archivos guardados
+router.get('/superadmin/respaldo', soloSuperadmin, e(respaldosController.descargar));
+// El parser de 50 MB corre DESPUÉS de autenticar al superadmin (el
+// guard solo necesita la cookie de sesión, no el cuerpo).
+router.post('/superadmin/respaldo/restaurar', soloSuperadmin, express.json({ limit: '50mb' }), e(respaldosController.restaurar));
+router.get('/superadmin/respaldo/archivos', soloSuperadmin, e(respaldosController.listarArchivos));
+router.get('/superadmin/respaldo/archivos/:nombre', soloSuperadmin, e(respaldosController.descargarArchivo));
 
 // Limpieza de datos históricos + políticas de retención
 router.get('/superadmin/limpieza/resumen', soloSuperadmin, e(consultasController.limpiezaResumen));

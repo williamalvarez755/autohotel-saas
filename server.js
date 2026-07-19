@@ -55,7 +55,13 @@ app.use((req, res, next) => {
 });
 
 // ---------------- Body parser ----------------
-app.use(express.json({ limit: '100kb' }));
+// La restauración de respaldos sube el sistema completo en JSON. Su
+// parser grande (50 MB) vive DENTRO de la ruta, DESPUÉS del guard de
+// superadmin (routes/index.js): un anónimo no puede obligar al
+// servidor a parsear 50 MB. Aquí solo se salta esa ruta.
+const RUTA_RESTAURAR = '/api/superadmin/respaldo/restaurar';
+const parserJson = express.json({ limit: '100kb' });
+app.use((req, res, next) => (req.path === RUTA_RESTAURAR ? next() : parserJson(req, res, next)));
 
 // ---------------- Sesiones almacenadas en MySQL ----------------
 // Reutiliza el pool de la aplicación: menos conexiones abiertas y el

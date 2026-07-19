@@ -235,6 +235,13 @@ Borra en transacción los registros anteriores a `fecha` de los tipos elegidos (
 ### PUT /superadmin/retencion — [S] — `{ tipo, meses, programada:'manual'|'mensual'|'trimestral'|'anual' }`
 El servidor ejecuta las políticas no manuales periódicamente, con respaldo automático a `respaldos/` antes de borrar.
 
+### GET /superadmin/respaldo — [S] — descarga el respaldo COMPLETO del sistema (JSON)
+Todas las tablas de negocio (17; `sesiones` queda fuera) con versión y fecha. Auditado.
+### POST /superadmin/respaldo/restaurar — [S] — `{ confirmacion:'RESTAURAR', respaldo:{...} }`
+**Reemplaza TODOS los datos** por los del respaldo. Validación estricta: sistema/versión, tablas y columnas contra las reales (columna desconocida → 400, jamás se interpola nada del archivo en SQL), y debe existir al menos un superadmin activo en el respaldo. Antes de tocar nada guarda un respaldo automático del estado actual en `respaldos/`. Corre en una transacción; al terminar **invalida todas las sesiones menos la del superadmin actual** (una sesión vieja podría apuntar a un id que ahora es otra persona). El cuerpo acepta hasta 50 MB, y ese parser corre DESPUÉS del guard de superadmin. Auditado con conteos.
+### GET /superadmin/respaldo/archivos — [S] — lista los respaldos guardados en el servidor.
+### GET /superadmin/respaldo/archivos/:nombre — [S] — descarga uno (nombre validado anti-traversal).
+
 ---
 
 ## Errores comunes

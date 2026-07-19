@@ -102,6 +102,13 @@ Campana con badge en la barra superior (polling 25 s) y lista completa en el das
   - Al cerrar, el trabajador termina su turno (se cierra su sesión); el dueño continúa en el panel.
 - **Auditoría del dueño**: la sección "Cajas" muestra cada turno con fondo, retiros, esperado, declarado, arqueo (cuadra/sobrante/faltante) y las notas de retiros del turno.
 
+## Respaldos completos (superadmin)
+
+- **Descargar**: un JSON con TODA la información del sistema (17 tablas de negocio; las sesiones no se respaldan). Cada descarga queda auditada con IP.
+- **Restaurar**: reemplaza todos los datos por los del archivo. Requisitos: confirmación textual `RESTAURAR` + checkbox en la interfaz; el archivo debe ser de AutoHotel (sistema/versión), sus tablas y columnas se validan contra las reales, y debe traer al menos un **superadmin activo** (nadie puede dejarse fuera del sistema).
+- **Red de seguridad**: antes de restaurar se guarda automáticamente un respaldo del estado actual en `respaldos/` — sin ese respaldo previo no se restaura. Todo corre en una transacción (o entra todo, o no entra nada).
+- **Sesiones**: al restaurar se cierran todas las sesiones menos la del superadmin que restaura (una sesión vieja podría apuntar a un id de usuario que ahora es otra persona con otros permisos).
+
 ## Usuarios y jerarquía
 
 - El dueño solo ve/crea/edita/desactiva trabajadores **suyos** (`dueno_id`) y solo puede asignarlos a **sus** hoteles.

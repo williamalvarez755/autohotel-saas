@@ -4,6 +4,23 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-18 · v2.11 — Respaldos completos del superadmin + revisión de seguridad
+
+**Suite e2e: 219 → 242 pruebas.** Sin cambios de esquema (no requiere migración).
+
+### Módulo "Respaldos" (panel del superadmin)
+- **Descargar respaldo completo**: `GET /superadmin/respaldo` exporta las 17 tablas de negocio a un JSON versionado (sesiones fuera). Fechas fieles gracias a `dateStrings`. Auditado con IP.
+- **Restaurar desde archivo**: `POST /superadmin/respaldo/restaurar` reemplaza TODOS los datos. Validación estricta (sistema/versión/tablas/columnas contra information_schema — nada del archivo se interpola en SQL; sin superadmin activo → 400), respaldo automático previo a `respaldos/` ("sin respaldo no se restaura"), transacción única con `FOREIGN_KEY_CHECKS=0` (FKs circulares hoteles↔usuarios) siempre restaurado, e **invalidación de todas las sesiones menos la actual** (una sesión vieja podría apuntar a un id que ahora es otro usuario). UI con resumen del archivo (fecha, filas por tabla), checkbox + confirmación textual RESTAURAR.
+- **Respaldos guardados en el servidor**: lista y descarga de los automáticos (pre-restauración y limpiezas programadas), con nombre validado anti path-traversal (patrón + resolución dentro de la carpeta).
+
+### Revisión de seguridad (hallazgos y estado)
+- **Corregido**: el parser JSON de 50 MB de la restauración corría antes de autenticar → ahora vive DENTRO de la ruta, después del guard de superadmin (un anónimo no puede hacer parsear 50 MB).
+- **Corregido**: fechas de archivos de respaldo se mostraban en UTC → ahora en hora GT como el resto del sistema.
+- **Verificado sin hallazgos**: regeneración de sesión en el login (anti-fijación), revalidación de usuario/suscripción en cada petición, guards de rol en todas las rutas, SQL 100 % parametrizado (interpolaciones solo de constantes del servidor), verificación de Origin en peticiones mutantes (anti-CSRF), rate limit del login, CSP sin CDNs, `respaldos/` fuera de `public/`.
+- **Pruebas nuevas (sección S, 23)**: roles/401/403 en respaldos, CSRF con Origin ajeno → 403, cabeceras de seguridad, tabla/columna desconocida (incluye intento de inyección por nombre de columna) → 400, respaldo sin superadmin → 400, path traversal rechazado, y **round-trip completo**: descargar → crear datos → restaurar → datos revertidos, conteos cuadran, sesión propia sobrevive, las demás se invalidan, el sistema opera y la restauración queda auditada.
+
+Archivos: `services/respaldosService.js` (nuevo), `controllers/respaldosController.js` (nuevo), `routes/index.js`, `server.js`, `public/superadmin.html`, `public/js/{superadmin,superadmin-respaldos}.js`, `test/e2e.js`, docs `04/06`, `API.md` (decisiones 43–44).
+
 ## 2026-07-18 · v2.10 — Cobro de consumos en curso (sin esperar la salida)
 
 **Suite e2e: 206 → 219 pruebas.** Pedido por el usuario: "le entrego el producto y de una vez le cobro, no tengo que esperar hasta la salida".

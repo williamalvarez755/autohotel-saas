@@ -15,14 +15,16 @@ const MODULOS = [
   { id: 'propietarios', icono: 'usuarios',  texto: 'Propietarios' },
   { id: 'consultas',    icono: 'lupa',       texto: 'Consultas' },
   { id: 'limpieza',     icono: 'basura',     texto: 'Limpieza de datos' },
-  { id: 'retencion',    icono: 'reloj',      texto: 'Retención' }
+  { id: 'retencion',    icono: 'reloj',      texto: 'Retención' },
+  { id: 'respaldos',    icono: 'escudo',     texto: 'Respaldos' }
 ];
 
 const CARGADORES_SA = {
   propietarios: cargarDuenos,
   consultas: () => cargarConsultas(),
   limpieza: () => cargarLimpieza(),
-  retencion: () => cargarRetencion()
+  retencion: () => cargarRetencion(),
+  respaldos: () => cargarRespaldos()
 };
 
 // ---------------- Arranque ----------------

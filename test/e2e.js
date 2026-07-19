@@ -1075,6 +1075,96 @@ async function principal() {
     Number(cobrosR[0].suma) === totalFinalR);
   await llamar('carlos', 'POST', `/habitaciones/${habR.id}/limpia`);
 
+  console.log('\n=== S. Seguridad + respaldos completos del superadmin ===');
+  // --- Guards de rol y sesión ---
+  const respaldoDueno = await llamar('carlos', 'GET', '/superadmin/respaldo');
+  probar('El dueño NO descarga respaldos (403)', respaldoDueno.status === 403);
+  const respaldoTrab = await llamar('pedro', 'GET', '/superadmin/respaldo');
+  probar('El trabajador NO descarga respaldos (403)', respaldoTrab.status === 403);
+  const respaldoAnon = await llamar(null, 'GET', '/superadmin/respaldo');
+  probar('Sin sesión no hay respaldo (401)', respaldoAnon.status === 401);
+  const restaurarDueno = await llamar('carlos', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'RESTAURAR', respaldo: {} });
+  probar('El dueño NO restaura (403)', restaurarDueno.status === 403);
+
+  // --- Endurecimiento general (regresión) ---
+  const csrfS = await fetch(BASE + '/auth/logout', {
+    method: 'POST',
+    headers: { Origin: 'https://sitio-malo.com', Cookie: galletas.admin || '' }
+  });
+  probar('CSRF: POST con Origin ajeno se rechaza (403)', csrfS.status === 403);
+  const portadaS = await fetch(`http://localhost:${process.env.PORT || 3000}/`);
+  probar('Cabeceras de seguridad presentes (CSP + nosniff + frame deny)',
+    String(portadaS.headers.get('content-security-policy')).includes("script-src 'self'")
+    && portadaS.headers.get('x-content-type-options') === 'nosniff'
+    && portadaS.headers.get('x-frame-options') === 'DENY');
+
+  // --- Validación estricta del archivo de restauración ---
+  const otroSistema = await llamar('admin', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'RESTAURAR', respaldo: { sistema: 'otro', version: 1, tablas: {} } });
+  probar('Respaldo de otro sistema → 400', otroSistema.status === 400);
+  const tablaMala = await llamar('admin', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'RESTAURAR', respaldo: { sistema: 'autohotel-saas', version: 1, tablas: { hackers: [] } } });
+  probar('Tabla desconocida en el respaldo → 400', tablaMala.status === 400);
+  const columnaMala = await llamar('admin', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'RESTAURAR', respaldo: { sistema: 'autohotel-saas', version: 1,
+      tablas: { usuarios: [{ id: 1, rol: 'superadmin', activo: 1, 'columna); DROP TABLE usuarios;--': 'x' }] } } });
+  probar('Columna desconocida (intento de inyección) → 400', columnaMala.status === 400);
+  const sinSuperadmin = await llamar('admin', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'RESTAURAR', respaldo: { sistema: 'autohotel-saas', version: 1, tablas: { usuarios: [] } } });
+  probar('Respaldo sin superadmin activo → 400 (no se puede quedar fuera)', sinSuperadmin.status === 400);
+  const traversal = await llamar('admin', 'GET', '/superadmin/respaldo/archivos/..%2F..%2F.env');
+  probar('Path traversal en respaldos guardados se rechaza', traversal.status === 400 || traversal.status === 404);
+
+  // --- Round-trip: descargar → cambiar datos → restaurar ---
+  const respaldoSA = await llamar('admin', 'GET', '/superadmin/respaldo');
+  probar('El superadmin descarga el respaldo completo',
+    respaldoSA.status === 200 && respaldoSA.sistema === 'autohotel-saas'
+    && Array.isArray(respaldoSA.tablas.usuarios) && respaldoSA.tablas.usuarios.length >= 7
+    && Array.isArray(respaldoSA.tablas.estancias) && respaldoSA.tablas.estancias.length > 0);
+  delete respaldoSA.status; // agregado por el helper de pruebas, no es parte del archivo
+
+  const marcadorS = await llamar('carlos', 'POST', '/productos',
+    { nombre: 'Producto Post Respaldo', precio: 5, stock: 1 });
+  probar('Se crean datos DESPUÉS del respaldo (marcador)', marcadorS.success);
+
+  const sinConfirmarS = await llamar('admin', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'SI', respaldo: respaldoSA });
+  probar('Restaurar sin escribir RESTAURAR → 400', sinConfirmarS.status === 400);
+
+  const restauracionS = await llamar('admin', 'POST', '/superadmin/respaldo/restaurar',
+    { confirmacion: 'RESTAURAR', respaldo: respaldoSA });
+  probar('El superadmin restaura el respaldo completo (con respaldo previo automático)',
+    restauracionS.success && String(restauracionS.data.respaldo_previo).startsWith('pre-restauracion-')
+    && restauracionS.data.restaurado.usuarios === respaldoSA.tablas.usuarios.length);
+
+  const [marcadorBD] = await bd.query(
+    "SELECT COUNT(*) AS n FROM productos WHERE nombre = 'Producto Post Respaldo'");
+  probar('La restauración revierte los datos posteriores al respaldo', Number(marcadorBD[0].n) === 0);
+  const [usuariosBD] = await bd.query('SELECT COUNT(*) AS n FROM usuarios');
+  const [estanciasBD] = await bd.query('SELECT COUNT(*) AS n FROM estancias');
+  probar('Los conteos restaurados cuadran con el respaldo',
+    Number(usuariosBD[0].n) === respaldoSA.tablas.usuarios.length
+    && Number(estanciasBD[0].n) === respaldoSA.tablas.estancias.length);
+
+  const sesionAdminS = await llamar('admin', 'GET', '/auth/sesion');
+  probar('La sesión del superadmin sobrevive a la restauración', sesionAdminS.success);
+  const sesionCarlosS = await llamar('carlos', 'GET', '/auth/sesion');
+  probar('SEGURIDAD: las demás sesiones se invalidan al restaurar (401)', sesionCarlosS.status === 401);
+
+  const reLoginS = await ingresar('carlos', 'dueno123');
+  probar('El dueño vuelve a entrar con sus credenciales del respaldo', reLoginS.success);
+  const tableroS = await llamar('carlos', 'GET', '/habitaciones');
+  probar('El sistema opera con normalidad tras la restauración',
+    tableroS.success && tableroS.data.habitaciones.length > 0);
+
+  const [auditoriaS] = await bd.query(
+    "SELECT COUNT(*) AS n FROM auditoria WHERE accion = 'respaldo.restaurar'");
+  probar('La restauración queda auditada', Number(auditoriaS[0].n) >= 1);
+  const archivosS = await llamar('admin', 'GET', '/superadmin/respaldo/archivos');
+  probar('Los respaldos del servidor se listan (incluye el pre-restauración)',
+    archivosS.success && archivosS.data.some((a) => a.nombre.startsWith('pre-restauracion-')));
+
   await bd.end();
 
   console.log('\n============================================');

@@ -1458,6 +1458,87 @@ html[data-tema="claro"] .rep-tab.activo-tab { color: var(--primario-hover) !impo
   @page { margin: 14mm; }
 }
 
+/* ============================================================
+   TELÉFONOS (≤640px) — optimización táctil.
+   Este bloque NO alcanza a tablets (≥768px) ni escritorio: todo
+   lo de esos tamaños queda exactamente igual. Va al final del
+   archivo para ganar el cascade sin tocar las reglas base.
+   ============================================================ */
+@media (max-width: 640px) {
+  /* iOS hace zoom automático al enfocar campos con fuente <16px */
+  .campo input, .campo select, .campo textarea,
+  .buscador-pos input, .controles-pos input { font-size: 16px; }
+
+  /* Objetivos táctiles cómodos (~44px) */
+  .boton { min-height: 44px; }
+  .boton.chico { min-height: 40px; }
+  .boton.mini { min-height: 36px; }
+
+  /* Barra superior compacta: el nombre vive en el avatar */
+  .barra-superior { gap: 8px; padding: 10px 12px; }
+  .zona-derecha { gap: 6px; }
+  .usuario-mini { display: none; }
+  .selector-hotel { max-width: 132px; padding: 8px 9px; font-size: 13px; }
+
+  /* Contenido y encabezados más aprovechados */
+  .contenido { padding: 14px 12px 118px; }
+  .encabezado-seccion { margin-bottom: 16px; }
+  .encabezado-seccion h2 { font-size: 19px; }
+  .encabezado-seccion .fila-flex { width: 100%; }
+  .encabezado-seccion .fila-flex .boton { flex: 1 1 auto; }
+
+  /* Tablero: más tarjetas a la vista */
+  .malla-habitaciones { gap: 10px; }
+  .tarjeta-habitacion { min-height: 156px; }
+
+  /* Modales como HOJA INFERIOR (patrón nativo del teléfono) */
+  .fondo-modal { padding: 0; align-items: flex-end; }
+  .modal, .modal.ancho {
+    max-width: none;
+    border-radius: 18px 18px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    animation: subir-hoja 0.24s ease-out;
+  }
+  .modal-cuerpo { padding: 16px; }
+  .modal-pie {
+    flex-wrap: wrap;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  .modal-pie .boton { flex: 1 1 calc(50% - 10px); }
+
+  /* Tablas: celdas más densas y arrastre suave con el dedo */
+  .envoltura-tabla { -webkit-overflow-scrolling: touch; }
+  .tabla th { padding: 9px 8px; }
+  .tabla td { padding: 10px 8px; font-size: 13px; }
+
+  /* POS de pedidos: 2 columnas y controles a lo ancho */
+  .lista-pos { grid-template-columns: 1fr 1fr; max-height: 34vh; max-height: 34dvh; }
+  .barra-pos { padding: 10px; }
+  .seleccion-pos { min-width: 100%; }
+  .controles-pos { width: 100%; }
+  .controles-pos .boton:last-child { flex: 1; }
+
+  /* Selectores de opciones (método de pago, extras) envuelven */
+  .grupo-opciones { flex-wrap: wrap; }
+
+  /* Los avisos van ARRIBA: abajo viven la navegación y el pulgar */
+  .zona-avisos {
+    bottom: auto;
+    top: calc(14px + env(safe-area-inset-top));
+    left: 14px;
+    right: 14px;
+    width: auto;
+  }
+}
+@keyframes subir-hoja {
+  from { opacity: 0.5; transform: translateY(48px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Respeto por la preferencia de menos movimiento */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

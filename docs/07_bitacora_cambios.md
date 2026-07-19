@@ -4,6 +4,19 @@ Registro de cambios mayores del sistema. Cada entrada documenta QUÉ cambió, PO
 
 ---
 
+## 2026-07-18 · v2.11.1 — Optimización de interfaz para teléfonos
+
+Solo CSS, en un bloque `@media (max-width: 640px)` al final de `estilos.css`: **no alcanza a tablets (≥768px) ni escritorio**, cuyas reglas quedan idénticas (verificado con estilos computados a 961px y 768px).
+
+- **Modales como hoja inferior** (bottom-sheet): pegados abajo, esquinas redondeadas solo arriba, animación de subida, botones del pie a lo ancho en pares de ~44px de alto (objetivo táctil).
+- **Sin auto-zoom de iOS**: campos a 16px al enfocar (iOS hace zoom si la fuente es menor).
+- **Barra superior compacta**: se oculta el bloque nombre/rol (el avatar conserva las iniciales), selector de hotel más angosto, menos separación.
+- **Avisos (toasts) arriba**: abajo viven la navegación fija y el pulgar.
+- **POS de pedidos**: productos en 2 columnas, lista más alta (34dvh), botón Agregar a lo ancho.
+- Tablas más densas con arrastre suave (`-webkit-overflow-scrolling`), encabezados de sección con botones a lo ancho, tarjetas del tablero más compactas, `env(safe-area-inset-*)` respetado.
+
+Archivo: `public/css/estilos.css`. Verificado en viewport real de 375px (media query activa, sheet abajo, botones 44px) y en 768/961px (sin cambios).
+
 ## 2026-07-18 · v2.11 — Respaldos completos del superadmin + revisión de seguridad
 
 **Suite e2e: 219 → 242 pruebas.** Sin cambios de esquema (no requiere migración).

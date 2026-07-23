@@ -7,39 +7,6 @@ Sistema web completo de gestión de **autohoteles** (hoteles de estancia por hor
 
 ---
 
-## Requisitos
-
-| Requisito | Versión |
-|---|---|
-| Node.js | 18 o superior |
-| MySQL / MariaDB | MySQL 5.7+ / MariaDB 10.4+ (XAMPP funciona) |
-| npm | 8 o superior |
-
-## Instalación
-
-```bash
-# 1. Instalar dependencias
-npm install
-
-# 2. Configurar variables de entorno
-#    (en Windows: copy .env.example .env)
-cp .env.example .env
-#    Edite .env: credenciales de MySQL y un SESSION_SECRET aleatorio largo
-
-# 3. Importar la base de datos (crea la BD autohotel_saas)
-mysql -u root -p < db/schema.sql
-mysql -u root -p < db/seed.sql
-#    Con XAMPP en Windows:
-#    C:\xampp\mysql\bin\mysql.exe -u root < db/schema.sql
-#    C:\xampp\mysql\bin\mysql.exe -u root < db/seed.sql
-
-# 4. Iniciar el servidor
-npm start
-```
-
-Abrir **http://localhost:3000** (el puerto se cambia en `.env`).
-
-> `schema.sql` **borra y recrea** todas las tablas: ejecutarlo de nuevo reinicia el sistema a cero. `seed.sql` carga los datos de prueba.
 
 ## Pruebas end-to-end
 
